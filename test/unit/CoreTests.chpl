@@ -6,6 +6,7 @@
  */
 prototype module CoreTests {
   use remote_juggler.Core;
+  use TestUtils;
 
   config const numTests = 100;
   config const verbose = false;
@@ -194,9 +195,9 @@ prototype module CoreTests {
 
     // Summary
     writeln();
-    writeln("=".repeat(50));
+    writeln(repeatStr("=", 50));
     writeln("Core Tests: ", passed, " passed, ", failed, " failed");
-    writeln("=".repeat(50));
+    writeln(repeatStr("=", 50));
 
     if failed > 0 then exit(1);
   }

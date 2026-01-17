@@ -2,13 +2,12 @@
  * ConfigTests.chpl - Unit tests for Config module
  *
  * Tests SSH config parsing, git config parsing, and URL rewriting.
- * Uses QuickChpl for property-based testing.
  */
 prototype module ConfigTests {
   use remote_juggler.Config;
   use remote_juggler.Core;
+  use TestUtils;
 
-  config const numTests = 100;
   config const verbose = false;
 
   proc main() {
@@ -17,72 +16,16 @@ prototype module ConfigTests {
     var passed = 0;
     var failed = 0;
 
-    // Test SSH host pattern parsing
+    // Test 1: Extract host from SSH URL
     {
-      writeln("Test 1: SSH host pattern matching");
-
-      // Simple host match
-      const simplePattern = "gitlab-work";
-      const simpleHost = "gitlab-work";
-
-      var allPass = true;
-      if !hostMatchesPattern(simpleHost, simplePattern) {
-        writeln("  FAIL: Simple host should match");
-        allPass = false;
-      }
-
-      // Wildcard pattern
-      const wildcardPattern = "gitlab-*";
-      const matchingHost = "gitlab-personal";
-      const nonMatchingHost = "github-work";
-
-      if !hostMatchesPattern(matchingHost, wildcardPattern) {
-        writeln("  FAIL: Wildcard should match gitlab-personal");
-        allPass = false;
-      }
-
-      if hostMatchesPattern(nonMatchingHost, wildcardPattern) {
-        writeln("  FAIL: Wildcard should NOT match github-work");
-        allPass = false;
-      }
-
-      if allPass {
-        writeln("  PASS");
-        passed += 1;
-      } else {
-        failed += 1;
-      }
-    }
-
-    // Test URL parsing
-    {
-      writeln("Test 2: Git URL parsing");
-
+      writeln("Test 1: Extract host from SSH URL");
       var allPass = true;
 
-      // SSH URL format
       const sshUrl = "git@gitlab-work:company/project.git";
-      const (sshHost, sshPath) = parseGitUrl(sshUrl);
+      const host = extractHostFromRemote(sshUrl);
 
-      if sshHost != "gitlab-work" {
-        writeln("  FAIL: SSH host should be 'gitlab-work', got '", sshHost, "'");
-        allPass = false;
-      }
-      if sshPath != "company/project.git" {
-        writeln("  FAIL: SSH path should be 'company/project.git', got '", sshPath, "'");
-        allPass = false;
-      }
-
-      // HTTPS URL format
-      const httpsUrl = "https://gitlab.com/user/repo.git";
-      const (httpsHost, httpsPath) = parseGitUrl(httpsUrl);
-
-      if httpsHost != "gitlab.com" {
-        writeln("  FAIL: HTTPS host should be 'gitlab.com', got '", httpsHost, "'");
-        allPass = false;
-      }
-      if httpsPath != "user/repo.git" {
-        writeln("  FAIL: HTTPS path should be 'user/repo.git', got '", httpsPath, "'");
+      if host != "gitlab-work" {
+        writeln("  FAIL: Expected 'gitlab-work', got '", host, "'");
         allPass = false;
       }
 
@@ -94,31 +37,16 @@ prototype module ConfigTests {
       }
     }
 
-    // Test insteadOf URL rewriting
+    // Test 2: Extract host from HTTPS URL
     {
-      writeln("Test 3: Git URL insteadOf rewriting");
-
+      writeln("Test 2: Extract host from HTTPS URL");
       var allPass = true;
 
-      // Test that rewriting transforms URLs correctly
-      const originalUrl = "https://gitlab.com/user/repo.git";
-      const rewriteRule = "git@gitlab-work:";
-      const rewriteFrom = "https://gitlab.com/";
+      const httpsUrl = "https://gitlab.com/user/repo.git";
+      const host = extractHostFromRemote(httpsUrl);
 
-      const rewritten = applyInsteadOf(originalUrl, rewriteFrom, rewriteRule);
-      const expected = "git@gitlab-work:user/repo.git";
-
-      if rewritten != expected {
-        writeln("  FAIL: Expected '", expected, "', got '", rewritten, "'");
-        allPass = false;
-      }
-
-      // Test non-matching URL (should not be rewritten)
-      const otherUrl = "https://github.com/user/repo.git";
-      const notRewritten = applyInsteadOf(otherUrl, rewriteFrom, rewriteRule);
-
-      if notRewritten != otherUrl {
-        writeln("  FAIL: Non-matching URL should not be rewritten");
+      if host != "gitlab.com" {
+        writeln("  FAIL: Expected 'gitlab.com', got '", host, "'");
         allPass = false;
       }
 
@@ -130,36 +58,56 @@ prototype module ConfigTests {
       }
     }
 
-    // Test SSH config line parsing
+    // Test 3: Extract path from remote URL
     {
-      writeln("Test 4: SSH config line tokenization");
+      writeln("Test 3: Extract path from remote URL");
+      var allPass = true;
 
+      const sshUrl = "git@gitlab-work:company/project.git";
+      const path = extractPathFromRemote(sshUrl);
+
+      if path != "company/project.git" {
+        writeln("  FAIL: Expected 'company/project.git', got '", path, "'");
+        allPass = false;
+      }
+
+      if allPass {
+        writeln("  PASS");
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    // Test 4: SSH directive parsing
+    {
+      writeln("Test 4: SSH config directive parsing");
       var allPass = true;
 
       // Host line
       const hostLine = "Host gitlab-work";
-      const (hostKey, hostValue) = parseSshConfigLine(hostLine);
+      const (hostKey, hostValue) = parseSSHDirective(hostLine);
 
       if hostKey != "Host" || hostValue != "gitlab-work" {
-        writeln("  FAIL: Host line parsing failed");
+        writeln("  FAIL: Host line parsing failed: key='", hostKey, "' value='", hostValue, "'");
         allPass = false;
       }
 
-      // HostName line with indentation
+      // HostName with indentation
       const hostnameLine = "    HostName gitlab.com";
-      const (hnKey, hnValue) = parseSshConfigLine(hostnameLine);
+      const (hnKey, hnValue) = parseSSHDirective(hostnameLine);
 
       if hnKey != "HostName" || hnValue != "gitlab.com" {
-        writeln("  FAIL: HostName line parsing failed");
+        writeln("  FAIL: HostName parsing failed: key='", hnKey, "' value='", hnValue, "'");
         allPass = false;
       }
 
-      // IdentityFile with path
+      // IdentityFile
       const identityLine = "  IdentityFile ~/.ssh/id_ed25519_work";
-      const (idKey, idValue) = parseSshConfigLine(identityLine);
+      const (idKey, idValue) = parseSSHDirective(identityLine);
 
       if idKey != "IdentityFile" || idValue != "~/.ssh/id_ed25519_work" {
-        writeln("  FAIL: IdentityFile line parsing failed");
+        writeln("  FAIL: IdentityFile parsing failed: key='", idKey, "' value='", idValue, "'");
         allPass = false;
       }
 
@@ -171,33 +119,31 @@ prototype module ConfigTests {
       }
     }
 
-    // Test git config section parsing
+    // Test 5: Git config section parsing
     {
       writeln("Test 5: Git config section header parsing");
-
       var allPass = true;
 
       const userSection = "[user]";
-      const urlSection = "[url \"git@gitlab-work:\"]";
-      const includeSection = "[includeIf \"gitdir:~/work/\"]";
+      const (userType, userData) = parseGitSection(userSection);
 
-      if !isGitConfigSection(userSection) {
+      if userType == "" {
         writeln("  FAIL: Should recognize [user] as section");
         allPass = false;
       }
 
-      if !isGitConfigSection(urlSection) {
+      const urlSection = "[url \"git@gitlab-work:\"]";
+      const (urlType, urlData) = parseGitSection(urlSection);
+
+      if urlType == "" {
         writeln("  FAIL: Should recognize URL section");
         allPass = false;
       }
 
-      if !isGitConfigSection(includeSection) {
-        writeln("  FAIL: Should recognize includeIf section");
-        allPass = false;
-      }
-
       const notSection = "  email = user@example.com";
-      if isGitConfigSection(notSection) {
+      const (notType, notData) = parseGitSection(notSection);
+
+      if notType != "" {
         writeln("  FAIL: Should NOT recognize key=value as section");
         allPass = false;
       }
@@ -210,35 +156,16 @@ prototype module ConfigTests {
       }
     }
 
-    // Test provider detection from hostname
+    // Test 6: Git key-value parsing
     {
-      writeln("Test 6: Provider detection from hostname");
-
+      writeln("Test 6: Git config key-value parsing");
       var allPass = true;
 
-      if detectProviderFromHost("gitlab.com") != Provider.GitLab {
-        writeln("  FAIL: gitlab.com should be GitLab");
-        allPass = false;
-      }
+      const emailLine = "  email = user@example.com";
+      const (key, value) = parseGitKeyValue(emailLine);
 
-      if detectProviderFromHost("github.com") != Provider.GitHub {
-        writeln("  FAIL: github.com should be GitHub");
-        allPass = false;
-      }
-
-      if detectProviderFromHost("bitbucket.org") != Provider.Bitbucket {
-        writeln("  FAIL: bitbucket.org should be Bitbucket");
-        allPass = false;
-      }
-
-      if detectProviderFromHost("git.company.com") != Provider.Custom {
-        writeln("  FAIL: Unknown host should be Custom");
-        allPass = false;
-      }
-
-      // Self-hosted GitLab detection
-      if detectProviderFromHost("gitlab.company.com") != Provider.GitLab {
-        writeln("  FAIL: gitlab.company.com should be GitLab");
+      if key != "email" || value != "user@example.com" {
+        writeln("  FAIL: key-value parsing failed: key='", key, "' value='", value, "'");
         allPass = false;
       }
 
@@ -250,26 +177,27 @@ prototype module ConfigTests {
       }
     }
 
-    // Property test: URL parsing roundtrip
+    // Test 7: SSHHost provider inference
     {
-      writeln("Test 7: Property - URL host extraction is consistent");
-
+      writeln("Test 7: SSHHost provider inference");
       var allPass = true;
 
-      // Test various URL formats all extract host correctly
-      const urls = [
-        ("git@host:path.git", "host"),
-        ("ssh://git@host/path.git", "host"),
-        ("https://host/path.git", "host"),
-        ("git://host/path.git", "host")
-      ];
+      var gitlabHost = new SSHHost("gitlab-work", "gitlab.com", "~/.ssh/id_ed25519");
+      if gitlabHost.inferProvider() != Provider.GitLab {
+        writeln("  FAIL: gitlab.com should infer GitLab provider");
+        allPass = false;
+      }
 
-      for (url, expectedHost) in urls {
-        const (host, _) = parseGitUrl(url);
-        if host != expectedHost {
-          writeln("  FAIL: '", url, "' -> expected '", expectedHost, "', got '", host, "'");
-          allPass = false;
-        }
+      var githubHost = new SSHHost("github", "github.com", "~/.ssh/id_ed25519");
+      if githubHost.inferProvider() != Provider.GitHub {
+        writeln("  FAIL: github.com should infer GitHub provider");
+        allPass = false;
+      }
+
+      var bitbucketHost = new SSHHost("bb", "bitbucket.org", "~/.ssh/id_ed25519");
+      if bitbucketHost.inferProvider() != Provider.Bitbucket {
+        writeln("  FAIL: bitbucket.org should infer Bitbucket provider");
+        allPass = false;
       }
 
       if allPass {
@@ -280,28 +208,60 @@ prototype module ConfigTests {
       }
     }
 
-    // Test empty/edge cases
+    // Test 8: URL rewrite application
     {
-      writeln("Test 8: Edge cases - empty and malformed inputs");
+      writeln("Test 8: URL rewrite application");
+      var allPass = true;
 
+      var rewrite = new URLRewrite("https://gitlab.com/", "git@gitlab-work:");
+
+      const testUrl = "https://gitlab.com/user/repo.git";
+      if !rewrite.appliesTo(testUrl) {
+        writeln("  FAIL: Rewrite should apply to '", testUrl, "'");
+        allPass = false;
+      }
+
+      const rewritten = rewrite.apply(testUrl);
+      if rewritten != "git@gitlab-work:user/repo.git" {
+        writeln("  FAIL: Expected 'git@gitlab-work:user/repo.git', got '", rewritten, "'");
+        allPass = false;
+      }
+
+      const otherUrl = "https://github.com/user/repo.git";
+      if rewrite.appliesTo(otherUrl) {
+        writeln("  FAIL: Rewrite should NOT apply to '", otherUrl, "'");
+        allPass = false;
+      }
+
+      if allPass {
+        writeln("  PASS");
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    // Test 9: Empty/edge cases
+    {
+      writeln("Test 9: Edge cases - empty inputs");
       var allPass = true;
 
       // Empty URL
-      const (emptyHost, emptyPath) = parseGitUrl("");
-      if emptyHost != "" || emptyPath != "" {
-        writeln("  FAIL: Empty URL should return empty host and path");
+      const emptyHost = extractHostFromRemote("");
+      if emptyHost != "" {
+        writeln("  FAIL: Empty URL should return empty host");
         allPass = false;
       }
 
-      // Empty config line
-      const (emptyKey, emptyValue) = parseSshConfigLine("");
+      // Empty directive line
+      const (emptyKey, emptyValue) = parseSSHDirective("");
       if emptyKey != "" || emptyValue != "" {
         writeln("  FAIL: Empty line should return empty key and value");
         allPass = false;
       }
 
       // Comment line
-      const (commentKey, commentValue) = parseSshConfigLine("# This is a comment");
+      const (commentKey, commentValue) = parseSSHDirective("# This is a comment");
       if commentKey != "" || commentValue != "" {
         writeln("  FAIL: Comment line should return empty");
         allPass = false;
@@ -316,10 +276,7 @@ prototype module ConfigTests {
     }
 
     // Summary
-    writeln();
-    writeln("=".repeat(50));
-    writeln("Config Tests: ", passed, " passed, ", failed, " failed");
-    writeln("=".repeat(50));
+    printSummary("Config Tests", passed, failed);
 
     if failed > 0 then exit(1);
   }

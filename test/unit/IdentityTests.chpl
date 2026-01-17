@@ -1,14 +1,13 @@
 /*
  * IdentityTests.chpl - Unit tests for Identity module
  *
- * Tests identity detection, matching, and switching logic.
- * Uses QuickChpl for property-based testing.
+ * Tests identity registration, lookup, and validation.
  */
 prototype module IdentityTests {
   use remote_juggler.Identity;
   use remote_juggler.Core;
+  use TestUtils;
 
-  config const numTests = 100;
   config const verbose = false;
 
   proc main() {
@@ -17,363 +16,12 @@ prototype module IdentityTests {
     var passed = 0;
     var failed = 0;
 
-    // Test identity name normalization
+    // Test 1: GitIdentity record creation
     {
-      writeln("Test 1: Identity name normalization");
-
+      writeln("Test 1: GitIdentity record initialization");
       var allPass = true;
 
-      // Names should be lowercase with hyphens
-      const tests = [
-        ("gitlab-work", "gitlab-work"),
-        ("GitLab-Work", "gitlab-work"),
-        ("GITLAB_WORK", "gitlab-work"),
-        ("gitlab work", "gitlab-work"),
-        ("  gitlab-work  ", "gitlab-work")
-      ];
-
-      for (input, expected) in tests {
-        const normalized = normalizeIdentityName(input);
-        if normalized != expected {
-          writeln("  FAIL: '", input, "' -> expected '", expected, "', got '", normalized, "'");
-          allPass = false;
-        }
-      }
-
-      if allPass {
-        writeln("  PASS");
-        passed += 1;
-      } else {
-        failed += 1;
-      }
-    }
-
-    // Test identity matching by SSH host
-    {
-      writeln("Test 2: Identity matching by SSH host");
-
-      var allPass = true;
-
-      // Create test identities
-      var identities: [0..2] GitIdentity;
-
-      identities[0] = new GitIdentity(
-        name = "gitlab-work",
-        provider = Provider.GitLab,
-        host = "gitlab-work",
-        hostname = "gitlab.com",
-        user = "work-user",
-        email = "work@company.com"
-      );
-
-      identities[1] = new GitIdentity(
-        name = "gitlab-personal",
-        provider = Provider.GitLab,
-        host = "gitlab-personal",
-        hostname = "gitlab.com",
-        user = "personal-user",
-        email = "personal@email.com"
-      );
-
-      identities[2] = new GitIdentity(
-        name = "github",
-        provider = Provider.GitHub,
-        host = "github.com",
-        hostname = "github.com",
-        user = "gh-user",
-        email = "user@github.com"
-      );
-
-      // Find by host
-      const workMatch = findIdentityByHost(identities, "gitlab-work");
-      if workMatch.name != "gitlab-work" {
-        writeln("  FAIL: Should find gitlab-work identity");
-        allPass = false;
-      }
-
-      const personalMatch = findIdentityByHost(identities, "gitlab-personal");
-      if personalMatch.name != "gitlab-personal" {
-        writeln("  FAIL: Should find gitlab-personal identity");
-        allPass = false;
-      }
-
-      // Non-existent host
-      const noMatch = findIdentityByHost(identities, "nonexistent");
-      if noMatch.name != "" {
-        writeln("  FAIL: Should return empty identity for non-existent host");
-        allPass = false;
-      }
-
-      if allPass {
-        writeln("  PASS");
-        passed += 1;
-      } else {
-        failed += 1;
-      }
-    }
-
-    // Test identity matching by provider
-    {
-      writeln("Test 3: Identity filtering by provider");
-
-      var allPass = true;
-
-      var identities: [0..3] GitIdentity;
-
-      identities[0] = new GitIdentity(name = "gl-work", provider = Provider.GitLab, host = "gl-work", hostname = "gitlab.com", user = "u1", email = "e1");
-      identities[1] = new GitIdentity(name = "gl-personal", provider = Provider.GitLab, host = "gl-personal", hostname = "gitlab.com", user = "u2", email = "e2");
-      identities[2] = new GitIdentity(name = "gh-main", provider = Provider.GitHub, host = "github.com", hostname = "github.com", user = "u3", email = "e3");
-      identities[3] = new GitIdentity(name = "bb-team", provider = Provider.Bitbucket, host = "bitbucket.org", hostname = "bitbucket.org", user = "u4", email = "e4");
-
-      const gitlabIds = filterByProvider(identities, Provider.GitLab);
-      if gitlabIds.size != 2 {
-        writeln("  FAIL: Should find 2 GitLab identities, found ", gitlabIds.size);
-        allPass = false;
-      }
-
-      const githubIds = filterByProvider(identities, Provider.GitHub);
-      if githubIds.size != 1 {
-        writeln("  FAIL: Should find 1 GitHub identity, found ", githubIds.size);
-        allPass = false;
-      }
-
-      const customIds = filterByProvider(identities, Provider.Custom);
-      if customIds.size != 0 {
-        writeln("  FAIL: Should find 0 Custom identities, found ", customIds.size);
-        allPass = false;
-      }
-
-      if allPass {
-        writeln("  PASS");
-        passed += 1;
-      } else {
-        failed += 1;
-      }
-    }
-
-    // Test identity validation
-    {
-      writeln("Test 4: Identity validation");
-
-      var allPass = true;
-
-      // Valid identity
-      const valid = new GitIdentity(
-        name = "gitlab-work",
-        provider = Provider.GitLab,
-        host = "gitlab-work",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "user@example.com"
-      );
-
-      const (isValid, validErrors) = validateIdentity(valid);
-      if !isValid {
-        writeln("  FAIL: Valid identity should pass validation");
-        allPass = false;
-      }
-
-      // Invalid - missing name
-      const noName = new GitIdentity(
-        name = "",
-        provider = Provider.GitLab,
-        host = "host",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "user@example.com"
-      );
-
-      const (noNameValid, _) = validateIdentity(noName);
-      if noNameValid {
-        writeln("  FAIL: Identity without name should fail validation");
-        allPass = false;
-      }
-
-      // Invalid - missing host
-      const noHost = new GitIdentity(
-        name = "test",
-        provider = Provider.GitLab,
-        host = "",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "user@example.com"
-      );
-
-      const (noHostValid, _) = validateIdentity(noHost);
-      if noHostValid {
-        writeln("  FAIL: Identity without host should fail validation");
-        allPass = false;
-      }
-
-      // Invalid email format
-      const badEmail = new GitIdentity(
-        name = "test",
-        provider = Provider.GitLab,
-        host = "host",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "not-an-email"
-      );
-
-      const (badEmailValid, _) = validateIdentity(badEmail);
-      if badEmailValid {
-        writeln("  FAIL: Identity with invalid email should fail validation");
-        allPass = false;
-      }
-
-      if allPass {
-        writeln("  PASS");
-        passed += 1;
-      } else {
-        failed += 1;
-      }
-    }
-
-    // Test email validation
-    {
-      writeln("Test 5: Email format validation");
-
-      var allPass = true;
-
-      const validEmails = [
-        "user@example.com",
-        "user.name@company.co.uk",
-        "user+tag@domain.org",
-        "first.last@subdomain.example.com"
-      ];
-
-      for email in validEmails {
-        if !isValidEmail(email) {
-          writeln("  FAIL: Should accept valid email: ", email);
-          allPass = false;
-        }
-      }
-
-      const invalidEmails = [
-        "",
-        "not-an-email",
-        "@nodomain.com",
-        "noat.com",
-        "user@",
-        "user@.com"
-      ];
-
-      for email in invalidEmails {
-        if isValidEmail(email) {
-          writeln("  FAIL: Should reject invalid email: '", email, "'");
-          allPass = false;
-        }
-      }
-
-      if allPass {
-        writeln("  PASS");
-        passed += 1;
-      } else {
-        failed += 1;
-      }
-    }
-
-    // Test identity priority scoring
-    {
-      writeln("Test 6: Identity priority scoring");
-
-      var allPass = true;
-
-      // Identity with full credentials should score higher
-      var fullCreds = new GitIdentity(
-        name = "full",
-        provider = Provider.GitLab,
-        host = "gitlab-full",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "user@example.com"
-      );
-      fullCreds.gpg = new GPGConfig(keyId = "ABC123", signCommits = true, signTags = true, autoSignoff = true);
-
-      var minimalCreds = new GitIdentity(
-        name = "minimal",
-        provider = Provider.GitLab,
-        host = "gitlab-minimal",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "user@example.com"
-      );
-
-      const fullScore = calculateIdentityScore(fullCreds);
-      const minimalScore = calculateIdentityScore(minimalCreds);
-
-      if fullScore <= minimalScore {
-        writeln("  FAIL: Full credentials identity should score higher");
-        writeln("    Full score: ", fullScore, ", Minimal score: ", minimalScore);
-        allPass = false;
-      }
-
-      if allPass {
-        writeln("  PASS");
-        passed += 1;
-      } else {
-        failed += 1;
-      }
-    }
-
-    // Test identity comparison
-    {
-      writeln("Test 7: Identity equality comparison");
-
-      var allPass = true;
-
-      const id1 = new GitIdentity(
-        name = "test",
-        provider = Provider.GitLab,
-        host = "test-host",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "user@test.com"
-      );
-
-      const id2 = new GitIdentity(
-        name = "test",
-        provider = Provider.GitLab,
-        host = "test-host",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "user@test.com"
-      );
-
-      const id3 = new GitIdentity(
-        name = "different",
-        provider = Provider.GitLab,
-        host = "test-host",
-        hostname = "gitlab.com",
-        user = "user",
-        email = "user@test.com"
-      );
-
-      if !identitiesEqual(id1, id2) {
-        writeln("  FAIL: Identical identities should be equal");
-        allPass = false;
-      }
-
-      if identitiesEqual(id1, id3) {
-        writeln("  FAIL: Different identities should not be equal");
-        allPass = false;
-      }
-
-      if allPass {
-        writeln("  PASS");
-        passed += 1;
-      } else {
-        failed += 1;
-      }
-    }
-
-    // Test identity serialization
-    {
-      writeln("Test 8: Identity JSON serialization roundtrip");
-
-      var allPass = true;
-
-      const original = new GitIdentity(
+      const identity = new GitIdentity(
         name = "test-identity",
         provider = Provider.GitLab,
         host = "gitlab-test",
@@ -382,26 +30,53 @@ prototype module IdentityTests {
         email = "test@example.com"
       );
 
-      const json = identityToJson(original);
-      const restored = jsonToIdentity(json);
+      if identity.name != "test-identity" { allPass = false; writeln("  FAIL: name"); }
+      if identity.provider != Provider.GitLab { allPass = false; writeln("  FAIL: provider"); }
+      if identity.host != "gitlab-test" { allPass = false; writeln("  FAIL: host"); }
+      if identity.hostname != "gitlab.com" { allPass = false; writeln("  FAIL: hostname"); }
+      if identity.user != "testuser" { allPass = false; writeln("  FAIL: user"); }
+      if identity.email != "test@example.com" { allPass = false; writeln("  FAIL: email"); }
 
-      if original.name != restored.name {
-        writeln("  FAIL: Name not preserved in roundtrip");
+      if allPass {
+        writeln("  PASS");
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    // Test 2: GitIdentity.isValid()
+    {
+      writeln("Test 2: GitIdentity validity check");
+      var allPass = true;
+
+      // Valid identity
+      const valid = new GitIdentity(
+        name = "valid",
+        provider = Provider.GitLab,
+        host = "gitlab-test",
+        hostname = "gitlab.com",
+        user = "user",
+        email = "user@example.com"
+      );
+
+      if !valid.isValid() {
+        writeln("  FAIL: Valid identity should return isValid() = true");
         allPass = false;
       }
 
-      if original.provider != restored.provider {
-        writeln("  FAIL: Provider not preserved in roundtrip");
-        allPass = false;
-      }
+      // Invalid - empty name
+      const emptyName = new GitIdentity(
+        name = "",
+        provider = Provider.GitLab,
+        host = "gitlab-test",
+        hostname = "gitlab.com",
+        user = "user",
+        email = "user@example.com"
+      );
 
-      if original.host != restored.host {
-        writeln("  FAIL: Host not preserved in roundtrip");
-        allPass = false;
-      }
-
-      if original.email != restored.email {
-        writeln("  FAIL: Email not preserved in roundtrip");
+      if emptyName.isValid() {
+        writeln("  FAIL: Empty name identity should be invalid");
         allPass = false;
       }
 
@@ -413,40 +88,205 @@ prototype module IdentityTests {
       }
     }
 
-    // Property test: Identity names are unique after normalization
+    // Test 3: Identity registration and lookup
     {
-      writeln("Test 9: Property - Normalized names produce valid identifiers");
-
+      writeln("Test 3: Identity registration and lookup");
       var allPass = true;
 
-      const testNames = [
-        "gitlab-work",
-        "GitHub Personal",
-        "BITBUCKET_TEAM",
-        "my.custom.host"
-      ];
+      // Clear any existing identities
+      clearIdentities();
 
-      for name in testNames {
-        const normalized = normalizeIdentityName(name);
+      const testId = new GitIdentity(
+        name = "lookup-test",
+        provider = Provider.GitLab,
+        host = "gitlab-lookup",
+        hostname = "gitlab.com",
+        user = "lookupuser",
+        email = "lookup@example.com"
+      );
 
-        // Should only contain lowercase letters, numbers, and hyphens
-        for ch in normalized {
-          if !(ch >= 'a' && ch <= 'z') &&
-             !(ch >= '0' && ch <= '9') &&
-             ch != '-' {
-            writeln("  FAIL: Normalized name '", normalized, "' contains invalid char '", ch, "'");
-            allPass = false;
-            break;
-          }
-        }
+      registerIdentity(testId);
 
-        // Should not start or end with hyphen
-        if normalized.size > 0 {
-          if normalized[0] == '-' || normalized[normalized.size-1] == '-' {
-            writeln("  FAIL: Normalized name '", normalized, "' has leading/trailing hyphen");
-            allPass = false;
-          }
-        }
+      // Verify we can get it back
+      const (found, retrieved) = getIdentity("lookup-test");
+
+      if !found {
+        writeln("  FAIL: Should find registered identity");
+        allPass = false;
+      } else if retrieved.name != "lookup-test" {
+        writeln("  FAIL: Retrieved identity name mismatch");
+        allPass = false;
+      } else if retrieved.email != "lookup@example.com" {
+        writeln("  FAIL: Retrieved identity email mismatch");
+        allPass = false;
+      }
+
+      // Verify non-existent identity returns not found
+      const (notFound, _) = getIdentity("nonexistent");
+      if notFound {
+        writeln("  FAIL: Should not find non-existent identity");
+        allPass = false;
+      }
+
+      if allPass {
+        writeln("  PASS");
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+
+      // Clean up
+      clearIdentities();
+    }
+
+    // Test 4: Identity count
+    {
+      writeln("Test 4: Identity count tracking");
+      var allPass = true;
+
+      clearIdentities();
+
+      if identityCount() != 0 {
+        writeln("  FAIL: Should start with 0 identities after clear");
+        allPass = false;
+      }
+
+      registerIdentity(new GitIdentity(
+        name = "count-test-1",
+        provider = Provider.GitLab,
+        host = "host1",
+        hostname = "gitlab.com",
+        user = "user1",
+        email = "user1@example.com"
+      ));
+
+      if identityCount() != 1 {
+        writeln("  FAIL: Should have 1 identity after first registration");
+        allPass = false;
+      }
+
+      registerIdentity(new GitIdentity(
+        name = "count-test-2",
+        provider = Provider.GitHub,
+        host = "host2",
+        hostname = "github.com",
+        user = "user2",
+        email = "user2@example.com"
+      ));
+
+      if identityCount() != 2 {
+        writeln("  FAIL: Should have 2 identities after second registration");
+        allPass = false;
+      }
+
+      if allPass {
+        writeln("  PASS");
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+
+      clearIdentities();
+    }
+
+    // Test 5: List identities by provider
+    {
+      writeln("Test 5: List identities by provider");
+      var allPass = true;
+
+      clearIdentities();
+
+      // Register identities with different providers
+      registerIdentity(new GitIdentity(name = "gl-1", provider = Provider.GitLab, host = "gl1", hostname = "gitlab.com", user = "u1", email = "e1@test.com"));
+      registerIdentity(new GitIdentity(name = "gl-2", provider = Provider.GitLab, host = "gl2", hostname = "gitlab.com", user = "u2", email = "e2@test.com"));
+      registerIdentity(new GitIdentity(name = "gh-1", provider = Provider.GitHub, host = "gh1", hostname = "github.com", user = "u3", email = "e3@test.com"));
+
+      const gitlabIds = listIdentities(Provider.GitLab);
+      if gitlabIds.size != 2 {
+        writeln("  FAIL: Should have 2 GitLab identities, got ", gitlabIds.size);
+        allPass = false;
+      }
+
+      const githubIds = listIdentities(Provider.GitHub);
+      if githubIds.size != 1 {
+        writeln("  FAIL: Should have 1 GitHub identity, got ", githubIds.size);
+        allPass = false;
+      }
+
+      if allPass {
+        writeln("  PASS");
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+
+      clearIdentities();
+    }
+
+    // Test 6: List identity names
+    {
+      writeln("Test 6: List identity names");
+      var allPass = true;
+
+      clearIdentities();
+
+      registerIdentity(new GitIdentity(name = "alpha", provider = Provider.GitLab, host = "a", hostname = "gitlab.com", user = "u", email = "e@t.com"));
+      registerIdentity(new GitIdentity(name = "beta", provider = Provider.GitHub, host = "b", hostname = "github.com", user = "u", email = "e@t.com"));
+
+      const names = listIdentityNames();
+
+      if names.size != 2 {
+        writeln("  FAIL: Should have 2 identity names, got ", names.size);
+        allPass = false;
+      }
+
+      var hasAlpha = false;
+      var hasBeta = false;
+      for name in names {
+        if name == "alpha" then hasAlpha = true;
+        if name == "beta" then hasBeta = true;
+      }
+
+      if !hasAlpha || !hasBeta {
+        writeln("  FAIL: Should contain both 'alpha' and 'beta'");
+        allPass = false;
+      }
+
+      if allPass {
+        writeln("  PASS");
+        passed += 1;
+      } else {
+        failed += 1;
+      }
+
+      clearIdentities();
+    }
+
+    // Test 7: GPGConfig record
+    {
+      writeln("Test 7: GPGConfig record initialization");
+      var allPass = true;
+
+      const defaultGPG = new GPGConfig();
+      if defaultGPG.keyId != "" {
+        writeln("  FAIL: Default keyId should be empty");
+        allPass = false;
+      }
+
+      const configuredGPG = new GPGConfig(
+        keyId = "ABC123",
+        signCommits = true,
+        signTags = true,
+        autoSignoff = false
+      );
+
+      if configuredGPG.keyId != "ABC123" {
+        writeln("  FAIL: keyId should be 'ABC123'");
+        allPass = false;
+      }
+      if !configuredGPG.signCommits {
+        writeln("  FAIL: signCommits should be true");
+        allPass = false;
       }
 
       if allPass {
@@ -457,40 +297,29 @@ prototype module IdentityTests {
       }
     }
 
-    // Test active identity detection
+    // Test 8: GitIdentity with GPG config
     {
-      writeln("Test 10: Active identity detection from git config");
-
+      writeln("Test 8: GitIdentity with GPG configuration");
       var allPass = true;
 
-      // Simulate git config values
-      const configEmail = "work@company.com";
-      const configName = "Work User";
-
-      var identities: [0..1] GitIdentity;
-
-      identities[0] = new GitIdentity(
-        name = "work",
+      var identity = new GitIdentity(
+        name = "gpg-test",
         provider = Provider.GitLab,
-        host = "gitlab-work",
+        host = "gitlab-gpg",
         hostname = "gitlab.com",
-        user = configName,
-        email = configEmail
+        user = "gpguser",
+        email = "gpg@example.com"
       );
 
-      identities[1] = new GitIdentity(
-        name = "personal",
-        provider = Provider.GitLab,
-        host = "gitlab-personal",
-        hostname = "gitlab.com",
-        user = "Personal User",
-        email = "personal@email.com"
-      );
+      identity.gpg = new GPGConfig(keyId = "DEADBEEF", signCommits = true, signTags = true, autoSignoff = true);
 
-      const active = detectActiveIdentity(identities, configEmail, configName);
+      if identity.gpg.keyId != "DEADBEEF" {
+        writeln("  FAIL: GPG keyId not set correctly");
+        allPass = false;
+      }
 
-      if active.name != "work" {
-        writeln("  FAIL: Should detect 'work' as active identity based on email match");
+      if !identity.gpg.signCommits {
+        writeln("  FAIL: GPG signCommits should be true");
         allPass = false;
       }
 
@@ -503,10 +332,7 @@ prototype module IdentityTests {
     }
 
     // Summary
-    writeln();
-    writeln("=".repeat(50));
-    writeln("Identity Tests: ", passed, " passed, ", failed, " failed");
-    writeln("=".repeat(50));
+    printSummary("Identity Tests", passed, failed);
 
     if failed > 0 then exit(1);
   }

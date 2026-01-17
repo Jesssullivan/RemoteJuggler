@@ -6,10 +6,10 @@
 prototype module TokenHealthTests {
   use remote_juggler.Core;
   use remote_juggler.TokenHealth;
+  use TestUtils;
   use Time;
   use List;
 
-  config const numTests = 100;
   config const verbose = false;
 
   proc main() {
@@ -299,10 +299,7 @@ prototype module TokenHealthTests {
     }
 
     // Summary
-    writeln();
-    writeln("=".repeat(50));
-    writeln("TokenHealth Tests: ", passed, " passed, ", failed, " failed");
-    writeln("=".repeat(50));
+    printSummary("TokenHealth Tests", passed, failed);
 
     if failed > 0 then exit(1);
   }
