@@ -73,7 +73,9 @@ build:darwin-arm64:
     - export PATH="/opt/homebrew/bin:$PATH"
     # Ensure Chapel is available (installed via Homebrew or similar)
     - which chpl || brew install chapel
-    - mason build --release
+    # Use Makefile instead of Mason to work around Mason 0.2.0 linking bug
+    # (Mason can't handle "-framework Security" - splits on space)
+    - make release
     - mv target/release/remote_juggler ${PROJECT_NAME}-darwin-arm64
     - chmod +x ${PROJECT_NAME}-darwin-arm64
     # Sign binary for macOS (if certificate available)
@@ -92,10 +94,14 @@ build:darwin-amd64:
   tags:
     - macos
     - amd64
+    - shell  # Force native shell executor (Chapel/Homebrew not available in Docker)
   <<: *mason_cache
   script:
+    - export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
     - which chpl || brew install chapel
-    - mason build --release
+    # Use Makefile instead of Mason to work around Mason 0.2.0 linking bug
+    # (Mason can't handle "-framework Security" - splits on space)
+    - make release
     - mv target/release/remote_juggler ${PROJECT_NAME}-darwin-amd64
     - chmod +x ${PROJECT_NAME}-darwin-amd64
   artifacts:
