@@ -15,6 +15,7 @@ prototype module GPG {
   use Subprocess;
   use IO;
   use List;
+  use FileSystem;
   public use super.Core;
   public use super.ProviderCLI;
   import super.ProviderCLI;
@@ -704,6 +705,570 @@ prototype module GPG {
       return p.exitCode == 0;
     } catch {
       return false;
+    }
+  }
+
+  // ============================================================
+  // Hardware Token (YubiKey/SmartCard) Detection
+  // ============================================================
+
+  /*
+   * Check if a GPG key is stored on a hardware token (YubiKey/SmartCard)
+   *
+   * Detects hardware keys by looking for stub indicators in the
+   * gpg --list-secret-keys output. Keys on smartcards show ">" in
+   * the ssb line indicating the private key is a stub.
+   *
+   * Args:
+   *   keyId: The GPG key ID to check
+   *
+   * Returns:
+   *   true if the key is on a hardware token, false otherwise
+   */
+  proc isHardwareKey(keyId: string): bool {
+    if !gpgAvailable() then return false;
+
+    try {
+      // Use --with-keygrip to get detailed key info
+      var p = spawn(["gpg", "--list-secret-keys", "--with-colons", "--with-keygrip", keyId],
+                    stdout=pipeStyle.pipe,
+                    stderr=pipeStyle.close);
+      p.wait();
+
+      if p.exitCode != 0 then return false;
+
+      var output: string;
+      p.stdout.readAll(output);
+
+      // Look for stub indicators in the output
+      // In colon format, a stub key has "#" in the field indicating
+      // the secret key is not available (only a stub pointing to card)
+      // Also check for ">" which indicates card-stored key
+      for line in output.split("\n") {
+        const fields = line.split(":");
+        if fields.size < 2 then continue;
+
+        const recordType = fields[0];
+
+        // Check secret key (sec) and secret subkey (ssb) lines
+        if recordType == "sec" || recordType == "ssb" {
+          // Field 1 is validity, field 11+ may contain key capabilities
+          // Look for "#" indicating stub or ">" indicating card
+          if fields.size > 1 {
+            const validity = fields[1];
+            // "#" means secret key stub (key on card)
+            if validity.find("#") != -1 then return true;
+          }
+
+          // Also check the entire line for card indicators
+          if line.find(">") != -1 then return true;
+        }
+
+        // Check for keygrip lines followed by card serial
+        // Format: grp:::::::::KEYGRIP:
+        // If next line is cardserial, key is on card
+        if recordType == "grp" {
+          // The presence of a keygrip with subsequent card info indicates hardware
+          continue;
+        }
+      }
+
+      // Alternative: check if gpg --card-status shows this key
+      const cardInfo = getCardStatus();
+      if cardInfo.present {
+        // Check if any of the card's key grips match this key
+        var keyGripP = spawn(["gpg", "--list-secret-keys", "--with-keygrip", "--with-colons", keyId],
+                             stdout=pipeStyle.pipe, stderr=pipeStyle.close);
+        keyGripP.wait();
+
+        if keyGripP.exitCode == 0 {
+          var gripOutput: string;
+          keyGripP.stdout.readAll(gripOutput);
+
+          for line in gripOutput.split("\n") {
+            if line.startsWith("grp:") {
+              const grpFields = line.split(":");
+              if grpFields.size > 9 {
+                const grip = grpFields[9];
+                if grip == cardInfo.sigKeyGrip || grip == cardInfo.autKeyGrip {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      }
+
+    } catch {
+      // Fall through
+    }
+
+    return false;
+  }
+
+  /*
+   * Get information about the connected hardware token (YubiKey/SmartCard)
+   *
+   * Parses the output of `gpg --card-status` to extract:
+   * - Serial number
+   * - Card type and firmware
+   * - Touch policies (if YubiKey)
+   * - Key grips for signing, encryption, and authentication
+   *
+   * Returns:
+   *   CardInfo record with token details, or empty record if no card
+   */
+  proc getCardStatus(): CardInfo {
+    var info = new CardInfo();
+
+    if !gpgAvailable() then return info;
+
+    try {
+      var p = spawn(["gpg", "--card-status", "--with-colons"],
+                    stdout=pipeStyle.pipe,
+                    stderr=pipeStyle.close);
+      p.wait();
+
+      if p.exitCode != 0 then return info;
+
+      var output: string;
+      p.stdout.readAll(output);
+
+      // Card present if we got output
+      if output.size > 0 {
+        info.present = true;
+      }
+
+      // Parse colon-delimited output
+      for line in output.split("\n") {
+        const fields = line.split(":");
+
+        if fields.size < 2 then continue;
+
+        const recordType = fields[0];
+
+        select recordType {
+          // Reader info
+          when "Reader" {
+            // Reader info not in colon format, skip
+          }
+          // Serial number: serialno:DXXXXXXXX:...
+          when "serialno" {
+            if fields.size > 1 {
+              info.serialNum = fields[1];
+            }
+          }
+          // Card type: cardtype:...
+          when "cardtype" {
+            if fields.size > 1 {
+              info.cardType = fields[1];
+            }
+          }
+          // Card version (firmware): cardversion:X.Y.Z
+          when "cardversion" {
+            if fields.size > 1 {
+              info.firmware = fields[1];
+            }
+          }
+          // Key grip for signing: KEY-FPR:1:FINGERPRINT or similar
+          when "fpr" {
+            // Fingerprints are listed, but we need keygrips
+          }
+          // Key attributes (keygrips)
+          when "keyattr" {
+            // Key attributes line
+          }
+        }
+
+        // Also parse non-colon format lines
+        if line.find("Application ID") != -1 && line.find(":") != -1 {
+          // Extract serial from Application ID
+          const parts = line.split(":");
+          if parts.size > 1 {
+            const appId = parts[1].strip();
+            // Serial is usually last 8 chars
+            if appId.size >= 8 {
+              info.serialNum = appId[appId.size-8..];
+            }
+          }
+        }
+
+        if line.find("Version") != -1 && line.find(":") != -1 && line.find("Application") == -1 {
+          const parts = line.split(":");
+          if parts.size > 1 {
+            info.firmware = parts[1].strip();
+          }
+        }
+      }
+
+      // Get touch policies using ykman if available (for YubiKey)
+      if info.present {
+        const touchInfo = getYubiKeyTouchPolicies();
+        info.touchSig = touchInfo.touchSig;
+        info.touchEnc = touchInfo.touchEnc;
+        info.touchAut = touchInfo.touchAut;
+      }
+
+      // Get key grips from card status
+      var nonColonP = spawn(["gpg", "--card-status"],
+                            stdout=pipeStyle.pipe, stderr=pipeStyle.close);
+      nonColonP.wait();
+
+      if nonColonP.exitCode == 0 {
+        var rawOutput: string;
+        nonColonP.stdout.readAll(rawOutput);
+
+        // Look for card type in human-readable output
+        if rawOutput.find("YubiKey") != -1 {
+          // Extract YubiKey model
+          for line in rawOutput.split("\n") {
+            if line.find("Application type") != -1 || line.find("Manufacturer") != -1 {
+              if line.find("Yubico") != -1 {
+                info.cardType = "YubiKey";
+              }
+            }
+            if line.find("Name of cardholder") != -1 {
+              // Skip cardholder name for privacy
+            }
+          }
+        }
+      }
+
+    } catch {
+      // Return empty info on error
+    }
+
+    return info;
+  }
+
+  /*
+   * Get YubiKey touch policies using ykman CLI
+   *
+   * Returns:
+   *   CardInfo with only touch policies filled in
+   */
+  proc getYubiKeyTouchPolicies(): CardInfo {
+    var info = new CardInfo();
+
+    try {
+      // Check if ykman is available
+      var whichP = spawn(["which", "ykman"],
+                         stdout=pipeStyle.close, stderr=pipeStyle.close);
+      whichP.wait();
+
+      if whichP.exitCode != 0 then return info;
+
+      // Get OpenPGP info
+      var p = spawn(["ykman", "openpgp", "info"],
+                    stdout=pipeStyle.pipe,
+                    stderr=pipeStyle.close);
+      p.wait();
+
+      if p.exitCode != 0 then return info;
+
+      var output: string;
+      p.stdout.readAll(output);
+
+      // Parse touch policies
+      // Format: "Touch policy: sig=on enc=on aut=cached"
+      // Or individual lines per slot
+      for line in output.split("\n") {
+        const lineLower = line.toLower();
+
+        if lineLower.find("sig") != -1 && lineLower.find("touch") != -1 {
+          if lineLower.find("on") != -1 {
+            info.touchSig = "on";
+          } else if lineLower.find("cached") != -1 {
+            info.touchSig = "cached";
+          } else if lineLower.find("off") != -1 || lineLower.find("disabled") != -1 {
+            info.touchSig = "off";
+          }
+        }
+
+        if lineLower.find("enc") != -1 && lineLower.find("touch") != -1 {
+          if lineLower.find("on") != -1 {
+            info.touchEnc = "on";
+          } else if lineLower.find("cached") != -1 {
+            info.touchEnc = "cached";
+          } else if lineLower.find("off") != -1 || lineLower.find("disabled") != -1 {
+            info.touchEnc = "off";
+          }
+        }
+
+        if lineLower.find("aut") != -1 && lineLower.find("touch") != -1 {
+          if lineLower.find("on") != -1 {
+            info.touchAut = "on";
+          } else if lineLower.find("cached") != -1 {
+            info.touchAut = "cached";
+          } else if lineLower.find("off") != -1 || lineLower.find("disabled") != -1 {
+            info.touchAut = "off";
+          }
+        }
+
+        // Alternative format: "SIG touch policy: On"
+        if line.find("SIG") != -1 && line.find("touch") != -1 {
+          if line.find("On") != -1 || line.find("on") != -1 {
+            info.touchSig = "on";
+          } else if line.find("Cached") != -1 || line.find("cached") != -1 {
+            info.touchSig = "cached";
+          } else {
+            info.touchSig = "off";
+          }
+        }
+
+        if line.find("ENC") != -1 && line.find("touch") != -1 {
+          if line.find("On") != -1 || line.find("on") != -1 {
+            info.touchEnc = "on";
+          } else if line.find("Cached") != -1 || line.find("cached") != -1 {
+            info.touchEnc = "cached";
+          } else {
+            info.touchEnc = "off";
+          }
+        }
+
+        if line.find("AUT") != -1 && line.find("touch") != -1 {
+          if line.find("On") != -1 || line.find("on") != -1 {
+            info.touchAut = "on";
+          } else if line.find("Cached") != -1 || line.find("cached") != -1 {
+            info.touchAut = "cached";
+          } else {
+            info.touchAut = "off";
+          }
+        }
+      }
+
+    } catch {
+      // Return empty info on error
+    }
+
+    return info;
+  }
+
+  /*
+   * Get comprehensive GPG signing status for an identity
+   *
+   * This function combines GPG availability, key detection, hardware
+   * token status, and signing format to provide agents with all the
+   * information needed to determine signing workflow.
+   *
+   * Args:
+   *   identity: The GitIdentity to check
+   *
+   * Returns:
+   *   GPGStatusResult with full signing status
+   */
+  proc getGPGSigningStatus(identity: GitIdentity): GPGStatusResult {
+    var result = new GPGStatusResult();
+
+    result.available = gpgAvailable();
+
+    if !result.available {
+      result.message = "GPG is not installed or not in PATH";
+      return result;
+    }
+
+    // Determine signing format
+    if identity.gpg.isSSHFormat() {
+      result.format = SigningFormat.SSH;
+      result.keyId = identity.gpg.sshKeyPath;
+
+      // For SSH signing, check if the key file exists
+      try {
+        use FileSystem;
+        const keyPath = expandTilde(identity.gpg.sshKeyPath);
+        if exists(keyPath) {
+          result.canSign = true;
+          result.message = "SSH signing configured with " + keyPath;
+
+          // Check if it's a FIDO2 key (hardware)
+          if keyPath.find("-sk") != -1 {
+            result.isHardwareKey = true;
+            result.card = getCardStatus();
+            if result.card.present {
+              result.message = "SSH signing with FIDO2 hardware key. Touch may be required.";
+              result.canSign = !identity.gpg.requiresTouch();
+            }
+          }
+        } else {
+          result.canSign = false;
+          result.message = "SSH key not found: " + keyPath;
+        }
+      } catch {
+        result.canSign = false;
+        result.message = "Error checking SSH key";
+      }
+
+      return result;
+    }
+
+    // GPG signing
+    result.format = SigningFormat.GPG;
+
+    var keyId = identity.gpg.keyId;
+    if keyId == "" {
+      result.message = "No GPG key configured for this identity";
+      return result;
+    }
+
+    // Auto-detect key if needed
+    if keyId == "auto" {
+      const (found, autoKeyId) = getKeyForEmail(identity.email);
+      if !found {
+        result.message = "No GPG key found for email: " + identity.email;
+        return result;
+      }
+      keyId = autoKeyId;
+    }
+
+    result.keyId = keyId;
+
+    // Check if key is on hardware
+    result.isHardwareKey = isHardwareKey(keyId);
+
+    if result.isHardwareKey {
+      result.card = getCardStatus();
+
+      if !result.card.present {
+        result.canSign = false;
+        result.message = "GPG key " + keyId + " is on a hardware token, but no token is connected. Insert YubiKey to sign.";
+        return result;
+      }
+
+      // Hardware key is present, but signing requires touch
+      if result.card.touchSig == "on" {
+        result.canSign = false;
+        result.message = "GPG key " + keyId + " requires physical YubiKey touch for each signature. " +
+                        "Agent cannot automate signing. Touch policy: " + result.card.touchSummary();
+      } else if result.card.touchSig == "cached" {
+        result.canSign = true;
+        result.message = "GPG key " + keyId + " on YubiKey with cached touch policy. " +
+                        "Touch required once, then cached briefly.";
+      } else {
+        result.canSign = true;
+        result.message = "GPG key " + keyId + " on YubiKey. Touch policy: " + result.card.touchSummary();
+      }
+    } else {
+      // Software key - should work without interaction
+      result.canSign = testSigning(keyId);
+      if result.canSign {
+        result.message = "GPG key " + keyId + " is a software key and can sign automatically.";
+      } else {
+        result.message = "GPG key " + keyId + " exists but signing test failed. Check passphrase or key validity.";
+      }
+    }
+
+    return result;
+  }
+
+  // ============================================================
+  // SSH Signing Support (git 2.34+)
+  // ============================================================
+
+  /*
+   * Configure git for SSH signing (instead of GPG)
+   *
+   * Git 2.34+ supports using SSH keys for commit signing.
+   * This function configures git to use SSH signing format.
+   *
+   * Args:
+   *   repoPath: Path to the git repository
+   *   sshKeyPath: Path to the SSH public key for signing
+   *   signCommits: Whether to sign commits by default
+   *
+   * Returns:
+   *   true if all configurations succeeded, false otherwise
+   */
+  proc configureGitSSHSigning(repoPath: string, sshKeyPath: string,
+                               signCommits: bool): bool {
+    var success = true;
+
+    // Set signing format to SSH
+    success = success && gitConfig(repoPath, "gpg.format", "ssh");
+
+    // Set the SSH signing key
+    success = success && gitConfig(repoPath, "user.signingkey", sshKeyPath);
+
+    // Enable/disable commit signing
+    const signValue = if signCommits then "true" else "false";
+    success = success && gitConfig(repoPath, "commit.gpgsign", signValue);
+
+    // Configure allowed signers file if it exists
+    const home = getEnvOrDefault("HOME", "/tmp");
+    const allowedSignersPath = home + "/.ssh/allowed_signers";
+
+    try {
+      use FileSystem;
+      if exists(allowedSignersPath) {
+        success = success && gitConfig(repoPath, "gpg.ssh.allowedSignersFile", allowedSignersPath);
+      }
+    } catch {
+      // Ignore errors checking for allowed_signers file
+    }
+
+    return success;
+  }
+
+  /*
+   * Configure git signing based on identity configuration
+   *
+   * Automatically selects between GPG and SSH signing based on
+   * the identity's gpg.format setting.
+   *
+   * Args:
+   *   repoPath: Path to the git repository
+   *   identity: The GitIdentity with signing configuration
+   *
+   * Returns:
+   *   Tuple of (success, message) with configuration result
+   */
+  proc configureIdentitySigning(repoPath: string, identity: GitIdentity): (bool, string) {
+    if !identity.gpg.isConfigured() {
+      return (true, "No signing configuration for this identity");
+    }
+
+    if identity.gpg.isSSHFormat() {
+      // SSH signing
+      const keyPath = expandTilde(identity.gpg.sshKeyPath);
+      const success = configureGitSSHSigning(repoPath, keyPath, identity.gpg.signCommits);
+
+      if success {
+        var msg = "Configured SSH signing with " + keyPath;
+        if identity.gpg.hardwareKey {
+          msg += " (FIDO2 hardware key, touch policy: " + identity.gpg.touchPolicy + ")";
+        }
+        return (true, msg);
+      } else {
+        return (false, "Failed to configure SSH signing");
+      }
+    } else {
+      // GPG signing
+      var keyId = identity.gpg.keyId;
+      if keyId == "auto" {
+        const (found, autoKeyId) = getKeyForEmail(identity.email);
+        if !found {
+          return (false, "No GPG key found for email: " + identity.email);
+        }
+        keyId = autoKeyId;
+      }
+
+      const success = configureGitGPG(repoPath, keyId,
+                                       identity.gpg.signCommits, identity.gpg.autoSignoff);
+
+      if success {
+        var msg = "Configured GPG signing with key " + keyId;
+
+        // Check for hardware key and add warnings
+        if identity.gpg.hardwareKey || isHardwareKey(keyId) {
+          msg += " (hardware key";
+          if identity.gpg.touchPolicy != "" {
+            msg += ", touch policy: " + identity.gpg.touchPolicy;
+          }
+          msg += " - physical touch required for commits)";
+        }
+        return (true, msg);
+      } else {
+        return (false, "Failed to configure GPG signing");
+      }
     }
   }
 }

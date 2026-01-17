@@ -14,7 +14,6 @@ prototype module remote_juggler {
   use Map;
   use Time;
   use CTypes;
-  use OS.POSIX only getenv;
   use Path;
 
   // Include and re-export submodules
@@ -54,71 +53,43 @@ prototype module remote_juggler {
   // ANSI Color/Formatting Helpers
   // ==========================================================================
 
-  // Check if terminal supports colors
-  private var _colorSupported: bool = false;
-  private var _colorChecked: bool = false;
+  // Convenience wrappers using Core.colorize
+  // These provide a cleaner API for common color operations
 
-  proc supportsColor(): bool {
-    if !_colorChecked {
-      const term = getEnvString("TERM");
-      const noColor = getEnvString("NO_COLOR");
-      _colorSupported = noColor == "" && term != "" && term != "dumb";
-      _colorChecked = true;
-    }
-    return _colorSupported;
-  }
-
-  // Safe getenv wrapper that returns string
-  proc getEnvString(name: string): string {
-    const result = getenv(name.c_str());
-    if result == nil then return "";
-    return string.createCopyingBuffer(result);
-  }
-
-  // Color functions - return plain text if colors not supported
   proc green(s: string): string {
-    if supportsColor() then return "\x1b[32m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Green);
   }
 
   proc red(s: string): string {
-    if supportsColor() then return "\x1b[31m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Red);
   }
 
   proc yellow(s: string): string {
-    if supportsColor() then return "\x1b[33m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Yellow);
   }
 
   proc blue(s: string): string {
-    if supportsColor() then return "\x1b[34m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Blue);
   }
 
   proc cyan(s: string): string {
-    if supportsColor() then return "\x1b[36m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Cyan);
   }
 
   proc magenta(s: string): string {
-    if supportsColor() then return "\x1b[35m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Magenta);
   }
 
   proc bold(s: string): string {
-    if supportsColor() then return "\x1b[1m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Bold);
   }
 
   proc dim(s: string): string {
-    if supportsColor() then return "\x1b[2m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Dim);
   }
 
   proc underline(s: string): string {
-    if supportsColor() then return "\x1b[4m" + s + "\x1b[0m";
-    return s;
+    return Core.colorize(s, Core.ANSIColor.Underline);
   }
 
   // ==========================================================================
@@ -1029,9 +1000,9 @@ prototype module remote_juggler {
         // Also check for expiry warnings
         const healthResult = TokenHealth.checkTokenHealth(identity);
         if healthResult.needsRenewal {
-          writeln("    ", yellow("⚠️  Expires in " + healthResult.daysUntilExpiry:string + " days"));
+          writeln("    ", yellow("[WARNING] Expires in " + healthResult.daysUntilExpiry:string + " days"));
         } else if healthResult.isExpired {
-          writeln("    ", red("❌ Expired"));
+          writeln("    ", red("[EXPIRED]"));
         }
       } else {
         writeln(yellow("Not found"));
@@ -1353,7 +1324,7 @@ prototype module remote_juggler {
   // Helper to expand ~ in paths
   proc expandPath(path: string): string {
     if path.startsWith("~") {
-      const home = getEnvString("HOME");
+      const home = Core.getEnvVar("HOME");
       return home + path[1..];
     }
     return path;

@@ -236,26 +236,7 @@ prototype module ProviderCLI {
   // Credential Resolution Chain
   // ============================================================
 
-  /*
-   * Get environment variable value
-   *
-   * Args:
-   *   name: Environment variable name
-   *
-   * Returns:
-   *   The value or empty string if not set
-   */
-  proc getEnvVar(name: string): string {
-    try {
-      var cstr = getenv(name.c_str());
-      if cstr != nil {
-        return string.createCopyingBuffer(cstr);
-      }
-    } catch {
-      // Fall through
-    }
-    return "";
-  }
+  // Note: getEnvVar is now imported from Core module
 
   /*
    * Resolve credential for an identity using the resolution chain:

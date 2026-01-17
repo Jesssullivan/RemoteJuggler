@@ -335,3 +335,250 @@ Some setups require different keys for commits vs tags:
 ```
 
 Note: This requires custom git configuration beyond RemoteJuggler's standard setup.
+
+## Hardware Token (YubiKey) Support
+
+RemoteJuggler supports GPG signing with hardware tokens like YubiKey. This section covers setup, touch policies, and agent limitations.
+
+### Overview
+
+Hardware tokens provide enhanced security by storing private keys on tamper-resistant hardware. However, they have specific requirements for signing operations:
+
+- **Physical touch**: YubiKey can require physical touch for each signature
+- **Card presence**: The token must be connected when signing
+- **Agent limitations**: MCP agents cannot trigger physical touch
+
+### YubiKey Configuration
+
+#### Check YubiKey Status
+
+```bash
+# GPG card status
+gpg --card-status
+
+# YubiKey Manager (more detailed)
+ykman openpgp info
+```
+
+#### Touch Policy
+
+YubiKey touch policies control when physical touch is required:
+
+| Policy | Behavior | Agent Compatible |
+|--------|----------|------------------|
+| `off` | Never require touch | Yes |
+| `on` | Always require touch | No - cannot automate |
+| `cached` | Touch once, cached 15s | Partially - user must initiate |
+
+Check current touch policies:
+
+```bash
+ykman openpgp info | grep -i touch
+```
+
+Set touch policy (requires PIN):
+
+```bash
+# Set signing to "cached" for better agent compatibility
+ykman openpgp keys set-touch sig cached
+
+# Options: off, on, cached, fixed (permanent)
+```
+
+### Identity Configuration for Hardware Keys
+
+Configure an identity to use a hardware-backed GPG key:
+
+```json
+{
+  "identities": {
+    "gitlab-personal": {
+      "gpg": {
+        "keyId": "8547785CA25F0AA8",
+        "format": "gpg",
+        "signCommits": true,
+        "signTags": true,
+        "hardwareKey": true,
+        "touchPolicy": "on"
+      }
+    }
+  }
+}
+```
+
+The `hardwareKey` and `touchPolicy` fields enable RemoteJuggler to warn agents about touch requirements.
+
+### SSH Signing Alternative
+
+Git 2.34+ supports SSH key signing, which can use FIDO2 keys on YubiKey:
+
+```json
+{
+  "identities": {
+    "gitlab-work": {
+      "gpg": {
+        "format": "ssh",
+        "sshKeyPath": "~/.ssh/gitlab-work-sk.pub",
+        "signCommits": true,
+        "hardwareKey": true,
+        "touchPolicy": "cached"
+      }
+    }
+  }
+}
+```
+
+**Advantages of SSH signing:**
+
+- FIDO2 keys can use `aut=cached` touch policy
+- SSH agent handles authentication caching
+- Simpler toolchain than GPG
+
+**Setup SSH signing:**
+
+```bash
+# Configure git for SSH signing
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/gitlab-work-sk.pub
+git config --global commit.gpgsign true
+
+# Create allowed signers file for verification
+echo "your@email.com $(cat ~/.ssh/gitlab-work-sk.pub)" >> ~/.ssh/allowed_signers
+git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
+```
+
+### MCP Tool: juggler_gpg_status
+
+The `juggler_gpg_status` MCP tool checks signing readiness including hardware token status:
+
+```bash
+# Via MCP
+remote-juggler --mode=mcp
+# Call: juggler_gpg_status with identity="gitlab-personal"
+```
+
+**Response includes:**
+
+```json
+{
+  "identity": "gitlab-personal",
+  "signingFormat": "gpg",
+  "keyId": "8547785CA25F0AA8",
+  "hardwareKey": true,
+  "cardPresent": true,
+  "cardSerial": "26503492",
+  "touchPolicy": {
+    "signing": "on",
+    "authentication": "cached"
+  },
+  "canSign": false,
+  "reason": "Physical YubiKey touch required for each commit",
+  "recommendation": "Ensure YubiKey is connected. Agent will configure identity; user must touch YubiKey when committing."
+}
+```
+
+### Agent Workflow with Hardware Keys
+
+When agents use `juggler_switch` with a hardware-key identity:
+
+1. **Agent switches identity** - configures git user and signing key
+2. **Agent receives warning** - told that touch is required
+3. **Agent cannot sign** - must inform user
+4. **User commits** - physically touches YubiKey
+5. **Commit succeeds** - signature created
+
+**Example switch response:**
+
+```
+Switching to identity: gitlab-personal
+================================
+
+[OK] Set user.name = Jesssullivan
+[OK] Set user.email = jess@sulliwood.org
+[OK] Set signing format: gpg
+[OK] Set GPG signing key: 8547785CA25F0AA8
+[OK] Enabled GPG commit signing
+
+[HARDWARE KEY WARNING]
+  GPG signing key 8547785CA25F0AA8 is on a hardware token (YubiKey)
+  Touch policy: on - Physical touch required for EACH signature
+  Agent CANNOT automate signing - user must touch YubiKey when committing
+  Use 'juggler_gpg_status' to check YubiKey presence before committing
+```
+
+### Troubleshooting Hardware Keys
+
+#### "No secret key" Error
+
+```
+gpg: skipped "8547785CA25F0AA8": No secret key
+gpg: signing failed: No secret key
+```
+
+**Causes:**
+
+1. YubiKey not connected
+2. Wrong signing key configured (placeholder vs real key)
+3. GPG agent doesn't see the card
+
+**Fix:**
+
+```bash
+# Check card is visible
+gpg --card-status
+
+# If not, restart gpg-agent
+gpgconf --kill gpg-agent
+
+# Verify correct key ID
+gpg --list-secret-keys --keyid-format=long
+git config --global user.signingkey  # Should match
+```
+
+#### Signing Timeout
+
+GPG waiting for touch that never happens (batch mode):
+
+```bash
+# Test signing interactively
+echo "test" | gpg -u 8547785CA25F0AA8 --clearsign
+
+# If this works with touch, hardware is fine
+# If this hangs, touch policy may be "on" without user awareness
+```
+
+#### YubiKey Not Detected
+
+```bash
+# Check USB connection
+ykman list
+
+# Check GPG sees the card
+gpg --card-status
+
+# If "No card" error, try:
+# 1. Unplug and replug YubiKey
+# 2. Kill and restart gpg-agent
+gpgconf --kill gpg-agent
+# 3. Check for pcscd conflicts
+```
+
+### Best Practices
+
+1. **Use `cached` touch for CI-adjacent workflows** - allows brief automated operation after user touch
+2. **Use `on` touch for maximum security** - every signature requires presence proof
+3. **Prefer SSH signing for work accounts** - simpler setup, better agent compatibility
+4. **Keep GPG signing for personal accounts** - established trust, keyserver publishing
+5. **Always set `hardwareKey: true` in config** - enables proper agent warnings
+6. **Run `juggler_gpg_status` before signing** - agents should check readiness
+
+### Reference: Touch Policy Comparison
+
+| Scenario | GPG (touch=on) | GPG (touch=cached) | SSH (aut=cached) |
+|----------|---------------|-------------------|------------------|
+| Single commit | Touch required | Touch required | Touch required |
+| Multiple commits (rapid) | Touch each | Touch once | Touch once |
+| Agent automation | Not possible | Limited window | Limited window |
+| CI/CD signing | Not supported | Not supported | Not supported |
+| Maximum security | Best | Good | Good |
+| User friction | High | Medium | Medium |

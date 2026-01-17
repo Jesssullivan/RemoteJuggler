@@ -1,0 +1,2 @@
+# E2E Test Dependencies
+pytest>=7.0.0

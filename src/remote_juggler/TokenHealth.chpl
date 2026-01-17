@@ -19,8 +19,6 @@ prototype module TokenHealth {
   use Map;
   use FileSystem;
   use Path;
-  use CTypes;
-  use OS.POSIX only getenv;
 
   // Import core modules
   public use super.Core;
@@ -93,11 +91,10 @@ prototype module TokenHealth {
    * Get path to token metadata storage file
    */
   proc getMetadataPath(): string {
-    const homePtr = getenv("HOME".c_str());
-    if homePtr == nil {
+    const homeDir = getEnvVar("HOME");
+    if homeDir == "" {
       return ".remote-juggler-tokens.json";
     }
-    const homeDir = string.createCopyingBuffer(homePtr);
     return homeDir + "/.config/remote-juggler/tokens.json";
   }
 
@@ -442,14 +439,14 @@ prototype module TokenHealth {
     }
 
     if healthResult.isExpired {
-      writeln("⚠️  WARNING: Token for ", identity.name, " has expired!");
+      writeln("[WARNING]  WARNING: Token for ", identity.name, " has expired!");
       writeln("   Renewal required for API operations.");
       writeln("   Run: remote-juggler token renew ", identity.name);
       return true;
     }
 
     if healthResult.needsRenewal {
-      writeln("⚠️  WARNING: Token for ", identity.name, " expires in ",
+      writeln("[WARNING]  WARNING: Token for ", identity.name, " expires in ",
               healthResult.daysUntilExpiry, " days");
       writeln("   Consider renewing soon.");
       writeln("   Run: remote-juggler token renew ", identity.name);
@@ -542,7 +539,7 @@ prototype module TokenHealth {
       if Keychain.isDarwin() {
         const stored = ProviderCLI.storeIdentityToken(identity, newToken);
         if stored {
-          writeln("✓ Token stored successfully in keychain");
+          writeln("[OK] Token stored successfully in keychain");
 
           // Update metadata
           var metadataMap = loadMetadata();
@@ -586,11 +583,11 @@ prototype module TokenHealth {
     if !result.hasToken {
       status += "  Status: SSH-only (no token)\n";
     } else if !result.healthy {
-      status += "  Status: ❌ " + result.message + "\n";
+      status += "  Status: [FAILED] " + result.message + "\n";
     } else if result.needsRenewal {
-      status += "  Status: ⚠️  " + result.message + "\n";
+      status += "  Status: [WARNING]  " + result.message + "\n";
     } else {
-      status += "  Status: ✓ " + result.message + "\n";
+      status += "  Status: [OK] " + result.message + "\n";
     }
 
     if result.scopes.size > 0 {

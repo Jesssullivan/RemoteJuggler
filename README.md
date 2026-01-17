@@ -83,24 +83,30 @@ The tool auto-generates `~/.config/remote-juggler/config.json` on first run, or 
     "personal": {
       "provider": "gitlab",
       "host": "gitlab-personal",
+      "hostname": "gitlab.com",
       "user": "your-username",
       "email": "you@personal.com",
-      "sshKey": "~/.ssh/id_ed25519_personal",
-      "gpgKey": "ABCD1234"
+      "identityFile": "~/.ssh/id_ed25519_personal",
+      "gpg": {
+        "keyId": "ABCD1234",
+        "signCommits": true
+      }
     },
     "work": {
       "provider": "gitlab",
       "host": "gitlab-work",
+      "hostname": "gitlab.com",
       "user": "work-username",
       "email": "you@company.com",
-      "sshKey": "~/.ssh/id_ed25519_work"
+      "identityFile": "~/.ssh/id_ed25519_work"
     },
     "github": {
       "provider": "github",
       "host": "github-personal",
+      "hostname": "github.com",
       "user": "github-user",
       "email": "you@personal.com",
-      "sshKey": "~/.ssh/id_ed25519_github"
+      "identityFile": "~/.ssh/id_ed25519_github"
     }
   }
 }
@@ -286,7 +292,11 @@ remote-juggler/
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+RemoteJuggler is dual-licensed:
+- **Source Code**: [zlib License](LICENSE-ZLIB.txt) - build from source for any purpose
+- **Prebuilt Binaries**: [Commercial License](LICENSE-PROPRIETARY.txt) - see terms for usage
+
+See [LICENSE](LICENSE) for details.
 
 ## Links
 

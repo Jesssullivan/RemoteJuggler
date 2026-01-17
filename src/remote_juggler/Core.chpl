@@ -187,30 +187,42 @@ prototype module Core {
   // =========================================================================
 
   /*
-    GPG signing configuration for an identity.
+    GPG/SSH signing configuration for an identity.
 
     Configures how commits and tags are signed when using a
-    particular git identity.
+    particular git identity. Supports both GPG and SSH signing.
 
-    :var keyId: GPG key ID or "auto" to detect from email
+    :var keyId: GPG key ID or "auto" to detect from email (for GPG format)
+    :var format: Signing format - "gpg" or "ssh" (default: gpg)
+    :var sshKeyPath: Path to SSH public key (for SSH format)
     :var signCommits: Enable automatic commit signing (git commit -S)
     :var signTags: Enable automatic tag signing (git tag -s)
     :var autoSignoff: Add Signed-off-by trailer to commits
+    :var hardwareKey: Whether key is on hardware token (YubiKey)
+    :var touchPolicy: Touch policy for signing ("on", "cached", "off")
   */
   record GPGConfig {
     var keyId: string = "";
+    var format: string = "gpg";
+    var sshKeyPath: string = "";
     var signCommits: bool = false;
     var signTags: bool = false;
     var autoSignoff: bool = false;
+    var hardwareKey: bool = false;
+    var touchPolicy: string = "";
 
     /*
       Initialize with default values.
     */
     proc init() {
       this.keyId = "";
+      this.format = "gpg";
+      this.sshKeyPath = "";
       this.signCommits = false;
       this.signTags = false;
       this.autoSignoff = false;
+      this.hardwareKey = false;
+      this.touchPolicy = "";
     }
 
     /*
@@ -224,18 +236,46 @@ prototype module Core {
     proc init(keyId: string, signCommits: bool = false,
               signTags: bool = false, autoSignoff: bool = false) {
       this.keyId = keyId;
+      this.format = "gpg";
+      this.sshKeyPath = "";
       this.signCommits = signCommits;
       this.signTags = signTags;
       this.autoSignoff = autoSignoff;
+      this.hardwareKey = false;
+      this.touchPolicy = "";
     }
 
     /*
-      Check if GPG signing is configured.
+      Initialize with format specified.
 
-      :returns: true if a key ID is specified
+      :arg keyId: GPG key ID or "auto" (for GPG format)
+      :arg format: Signing format ("gpg" or "ssh")
+      :arg sshKeyPath: Path to SSH public key (for SSH format)
+      :arg signCommits: Enable commit signing
+      :arg signTags: Enable tag signing
+      :arg hardwareKey: Whether key is on hardware token
+      :arg touchPolicy: Touch policy for signing
+    */
+    proc init(keyId: string, format: string, sshKeyPath: string,
+              signCommits: bool = false, signTags: bool = false,
+              hardwareKey: bool = false, touchPolicy: string = "") {
+      this.keyId = keyId;
+      this.format = format;
+      this.sshKeyPath = sshKeyPath;
+      this.signCommits = signCommits;
+      this.signTags = signTags;
+      this.autoSignoff = false;
+      this.hardwareKey = hardwareKey;
+      this.touchPolicy = touchPolicy;
+    }
+
+    /*
+      Check if signing is configured.
+
+      :returns: true if a key ID or SSH key path is specified
     */
     proc isConfigured(): bool {
-      return keyId != "";
+      return keyId != "" || sshKeyPath != "";
     }
 
     /*
@@ -245,6 +285,36 @@ prototype module Core {
     */
     proc isAutoDetect(): bool {
       return keyId == "auto";
+    }
+
+    /*
+      Check if using SSH signing format.
+
+      :returns: true if format is "ssh"
+    */
+    proc isSSHFormat(): bool {
+      return format.toLower() == "ssh";
+    }
+
+    /*
+      Check if signing requires physical touch.
+
+      :returns: true if hardware key with touch policy "on"
+    */
+    proc requiresTouch(): bool {
+      return hardwareKey && touchPolicy == "on";
+    }
+
+    /*
+      Get the signing key for git configuration.
+
+      :returns: GPG key ID or SSH key path depending on format
+    */
+    proc getSigningKey(): string {
+      if isSSHFormat() {
+        return sshKeyPath;
+      }
+      return keyId;
     }
   }
 
@@ -514,6 +584,186 @@ prototype module Core {
   }
 
   /*
+    Signing format for commits and tags.
+
+    Git 2.34+ supports SSH signing as an alternative to GPG.
+
+    - ``GPG`` - Traditional GPG signing (default)
+    - ``SSH`` - SSH key signing (requires git 2.34+)
+    - ``None`` - No signing configured
+  */
+  enum SigningFormat {
+    GPG,
+    SSH,
+    None
+  }
+
+  /*
+    Convert SigningFormat enum to string.
+
+    :arg sf: SigningFormat enum value
+    :returns: String representation
+  */
+  proc signingFormatToString(sf: SigningFormat): string {
+    select sf {
+      when SigningFormat.GPG do return "gpg";
+      when SigningFormat.SSH do return "ssh";
+      when SigningFormat.None do return "none";
+      otherwise do return "unknown";
+    }
+  }
+
+  /*
+    Parse SigningFormat from string.
+
+    :arg s: String representation (case-insensitive)
+    :returns: SigningFormat enum value, defaults to GPG
+  */
+  proc stringToSigningFormat(s: string): SigningFormat {
+    const lower = s.toLower();
+    if lower == "ssh" then return SigningFormat.SSH;
+    if lower == "none" || lower == "" then return SigningFormat.None;
+    return SigningFormat.GPG;
+  }
+
+  /*
+    Hardware token (YubiKey/SmartCard) information.
+
+    Captures the state of a connected hardware token for GPG operations.
+    Used by agents to determine if physical touch is required.
+
+    :var present: Whether a hardware token is connected
+    :var serial: Token serial number (e.g., "26503492")
+    :var cardType: Token type (e.g., "YubiKey 5 NFC")
+    :var firmware: Firmware version
+    :var touchSig: Touch policy for signing ("on", "cached", "off")
+    :var touchEnc: Touch policy for encryption
+    :var touchAut: Touch policy for authentication
+    :var sigKeyGrip: Key grip of signing key on card
+    :var autKeyGrip: Key grip of authentication key on card
+    :var encKeyGrip: Key grip of encryption key on card
+  */
+  record CardInfo {
+    var present: bool = false;
+    var serialNum: string = "";
+    var cardType: string = "";
+    var firmware: string = "";
+    var touchSig: string = "";
+    var touchEnc: string = "";
+    var touchAut: string = "";
+    var sigKeyGrip: string = "";
+    var autKeyGrip: string = "";
+    var encKeyGrip: string = "";
+
+    /*
+      Initialize with default values (no card present).
+    */
+    proc init() {
+      this.present = false;
+      this.serialNum = "";
+      this.cardType = "";
+      this.firmware = "";
+      this.touchSig = "";
+      this.touchEnc = "";
+      this.touchAut = "";
+      this.sigKeyGrip = "";
+      this.autKeyGrip = "";
+      this.encKeyGrip = "";
+    }
+
+    /*
+      Check if signing requires physical touch.
+
+      :returns: true if touch policy is "on" for signing
+    */
+    proc requiresSigningTouch(): bool {
+      return present && touchSig == "on";
+    }
+
+    /*
+      Check if authentication can be cached.
+
+      :returns: true if touch policy is "cached" for authentication
+    */
+    proc canCacheAuth(): bool {
+      return present && touchAut == "cached";
+    }
+
+    /*
+      Get a human-readable summary of touch requirements.
+
+      :returns: Summary string for display
+    */
+    proc touchSummary(): string {
+      if !present then return "No hardware token";
+      var parts: string = "";
+      if touchSig != "" then parts += "sig=" + touchSig;
+      if touchEnc != "" then parts += (if parts != "" then ", " else "") + "enc=" + touchEnc;
+      if touchAut != "" then parts += (if parts != "" then ", " else "") + "aut=" + touchAut;
+      return if parts != "" then parts else "unknown";
+    }
+  }
+
+  /*
+    GPG status result for hardware token detection.
+
+    Extended result type that includes hardware token information.
+
+    :var available: Whether GPG is available
+    :var keyId: The signing key ID
+    :var isHardwareKey: Whether the key is on a hardware token
+    :var card: Hardware token information
+    :var format: Signing format (GPG or SSH)
+    :var canSign: Whether signing is possible (false if hardware touch needed without user)
+    :var message: Status message or guidance
+  */
+  record GPGStatusResult {
+    var available: bool = false;
+    var keyId: string = "";
+    var isHardwareKey: bool = false;
+    var card: CardInfo;
+    var format: SigningFormat = SigningFormat.GPG;
+    var canSign: bool = false;
+    var message: string = "";
+
+    /*
+      Initialize with default values.
+    */
+    proc init() {
+      this.available = false;
+      this.keyId = "";
+      this.isHardwareKey = false;
+      this.card = new CardInfo();
+      this.format = SigningFormat.GPG;
+      this.canSign = false;
+      this.message = "";
+    }
+
+    /*
+      Initialize with all values.
+
+      :arg available: Whether GPG is available
+      :arg keyId: The signing key ID
+      :arg isHardwareKey: Whether key is on hardware
+      :arg card: Card information
+      :arg format: Signing format
+      :arg canSign: Whether automated signing is possible
+      :arg message: Status message
+    */
+    proc init(available: bool, keyId: string, isHardwareKey: bool,
+              card: CardInfo, format: SigningFormat,
+              canSign: bool, message: string) {
+      this.available = available;
+      this.keyId = keyId;
+      this.isHardwareKey = isHardwareKey;
+      this.card = card;
+      this.format = format;
+      this.canSign = canSign;
+      this.message = message;
+    }
+  }
+
+  /*
     GPG verification result.
 
     Result of verifying GPG key registration with a provider.
@@ -548,6 +798,71 @@ prototype module Core {
       this.message = message;
       this.settingsURL = settingsURL;
     }
+  }
+
+  // =========================================================================
+  // ANSI Color Codes
+  // =========================================================================
+
+  /*
+    ANSI color codes for terminal output formatting.
+  */
+  enum ANSIColor {
+    Reset,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    Bold,
+    Dim,
+    Underline
+  }
+
+  /*
+    Get the ANSI escape sequence for a color.
+
+    :arg c: ANSIColor enum value
+    :returns: ANSI escape sequence string
+  */
+  proc colorCode(c: ANSIColor): string {
+    select c {
+      when ANSIColor.Reset do return "\x1b[0m";
+      when ANSIColor.Red do return "\x1b[31m";
+      when ANSIColor.Green do return "\x1b[32m";
+      when ANSIColor.Yellow do return "\x1b[33m";
+      when ANSIColor.Blue do return "\x1b[34m";
+      when ANSIColor.Magenta do return "\x1b[35m";
+      when ANSIColor.Cyan do return "\x1b[36m";
+      when ANSIColor.Bold do return "\x1b[1m";
+      when ANSIColor.Dim do return "\x1b[2m";
+      when ANSIColor.Underline do return "\x1b[4m";
+      otherwise do return "";
+    }
+  }
+
+  /*
+    Apply ANSI color formatting to a string.
+
+    Uses environment variables to determine color support:
+    - NO_COLOR: If set, disables all colors
+    - TERM: If "dumb" or empty, disables colors
+
+    :arg s: String to colorize
+    :arg c: ANSIColor to apply
+    :returns: Colorized string (or plain if colors not supported)
+  */
+  proc colorize(s: string, c: ANSIColor): string {
+    // Check for color support
+    const noColor = getEnvVar("NO_COLOR");
+    const term = getEnvVar("TERM");
+
+    if noColor != "" || term == "" || term == "dumb" {
+      return s;
+    }
+
+    return colorCode(c) + s + colorCode(ANSIColor.Reset);
   }
 
   // =========================================================================
@@ -657,6 +972,16 @@ prototype module Core {
       return home + path[1..];
     }
     return path;
+  }
+
+  /*
+    Get environment variable value.
+
+    :arg name: Environment variable name
+    :returns: Environment value or empty string if not set
+  */
+  proc getEnvVar(name: string): string {
+    return getEnvOrDefault(name, "");
   }
 
   /*

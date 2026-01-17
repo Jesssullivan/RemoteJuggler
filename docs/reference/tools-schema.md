@@ -1,6 +1,6 @@
 ---
 title: "MCP Tool Schemas"
-description: "Complete JSON Schema definitions for all RemoteJuggler MCP tools including juggler_switch, juggler_status, juggler_validate, juggler_list_identities, and more."
+description: "Complete JSON Schema definitions for all RemoteJuggler MCP tools including juggler_switch, juggler_status, juggler_validate, juggler_list_identities, juggler_gpg_status, and more."
 category: "api"
 llm_priority: 1
 keywords:
@@ -9,6 +9,9 @@ keywords:
   - api
   - json-rpc
   - schema
+  - gpg
+  - yubikey
+  - hardware-key
 ---
 
 # MCP Tool Schemas
@@ -313,6 +316,66 @@ Synchronize configuration.
   }
 }
 ```
+
+---
+
+## juggler_gpg_status
+
+Check GPG/SSH signing readiness including hardware token status.
+
+### Schema
+
+```json
+{
+  "name": "juggler_gpg_status",
+  "description": "Check GPG/SSH signing readiness including hardware token (YubiKey) status. Returns whether signing is possible, touch requirements, and actionable guidance for agents.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "identity": {
+        "type": "string",
+        "description": "Identity to check signing status for. If omitted, checks current repository context."
+      },
+      "repoPath": {
+        "type": "string",
+        "description": "Path to git repository for context. Defaults to current working directory."
+      }
+    }
+  }
+}
+```
+
+### Example
+
+```json
+{
+  "name": "juggler_gpg_status",
+  "arguments": {
+    "identity": "gitlab-personal"
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `identity` | string | Identity being checked |
+| `signingFormat` | string | "gpg" or "ssh" |
+| `keyId` | string | GPG key ID or SSH key path |
+| `hardwareKey` | boolean | Whether key is on hardware token |
+| `cardPresent` | boolean | Whether YubiKey is connected |
+| `cardSerial` | string | YubiKey serial number |
+| `touchPolicy` | object | Touch policies for sig/enc/aut |
+| `canSign` | boolean | Whether automated signing is possible |
+| `reason` | string | Why signing may not be possible |
+| `recommendation` | string | Guidance for agents |
+
+### Use Cases
+
+1. **Pre-commit check**: Call before attempting signed commits to verify hardware token is ready
+2. **Identity validation**: Verify signing configuration is complete
+3. **User guidance**: Get actionable recommendations for signing setup
 
 ---
 

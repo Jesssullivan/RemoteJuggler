@@ -16,6 +16,7 @@
  */
 prototype module Tools {
   use super.Protocol;
+  use super.Core only getEnvVar;
   use List;
   use IO;
   use OS.POSIX;
@@ -205,6 +206,25 @@ prototype module Tools {
       '}'
     ));
 
+    // Tool: juggler_gpg_status
+    tools.pushBack(new ToolDefinition(
+      name = "juggler_gpg_status",
+      description = "Check GPG/SSH signing readiness including hardware token (YubiKey) status. Returns whether signing is possible, touch requirements, and actionable guidance for agents.",
+      inputSchema = '{' +
+        '"type":"object",' +
+        '"properties":{' +
+          '"identity":{' +
+            '"type":"string",' +
+            '"description":"Identity to check signing status for. If omitted, checks current repository context."' +
+          '},' +
+          '"repoPath":{' +
+            '"type":"string",' +
+            '"description":"Path to git repository for context. Defaults to current working directory."' +
+          '}' +
+        '}' +
+      '}'
+    ));
+
     return tools;
   }
 
@@ -244,6 +264,9 @@ prototype module Tools {
       when "juggler_sync_config" {
         return handleSyncConfig(params);
       }
+      when "juggler_gpg_status" {
+        return handleGPGStatus(params);
+      }
       otherwise {
         stderr.writeln("Tools: Unknown tool: ", name);
         return (false, "Unknown tool: " + name);
@@ -267,22 +290,8 @@ prototype module Tools {
    * Get the HOME environment variable.
    */
   proc getEnvHome(): string {
-    var home: c_ptr(c_char) = getenv("HOME".c_str());
-    if home == nil {
-      return "/tmp";
-    }
-    return string.createCopyingBuffer(home);
-  }
-
-  /*
-   * Get an environment variable value.
-   */
-  proc getEnvVar(name: string): string {
-    var val: c_ptr(c_char) = getenv(name.c_str());
-    if val == nil {
-      return "";
-    }
-    return string.createCopyingBuffer(val);
+    const home = getEnvVar("HOME");
+    return if home != "" then home else "/tmp";
   }
 
   /*
@@ -849,13 +858,87 @@ prototype module Tools {
       }
     }
 
-    // Configure GPG signing if requested
-    if configureGPG && gpgKeyId != "" && gpgKeyId != "auto" {
-      if setGitConfig(path, "user.signingkey", gpgKeyId) {
-        output += "[OK] Set GPG signing key: " + gpgKeyId + "\n";
+    // Configure GPG/SSH signing if requested
+    var signingFormat = "";
+    var sshKeyPath = "";
+    var hardwareKey = false;
+    var touchPolicy = "";
+
+    // Extract signing configuration from config
+    if configOk {
+      const (hasIdentities, identitiesJson) = Protocol.extractJsonObject(configContent, "identities");
+      if hasIdentities {
+        const (hasId, idJson) = Protocol.extractJsonObject(identitiesJson, identity);
+        if hasId {
+          const (hasGpg, gpgJson) = Protocol.extractJsonObject(idJson, "gpg");
+          if hasGpg {
+            const (_, format) = Protocol.extractJsonString(gpgJson, "format");
+            const (_, sshKey) = Protocol.extractJsonString(gpgJson, "sshKeyPath");
+            const (_, hwKey) = Protocol.extractJsonString(gpgJson, "hardwareKey");
+            const (_, touch) = Protocol.extractJsonString(gpgJson, "touchPolicy");
+
+            signingFormat = if format != "" then format else "gpg";
+            sshKeyPath = sshKey;
+            hardwareKey = hwKey == "true";
+            touchPolicy = touch;
+          }
+        }
       }
-      if setGitConfig(path, "commit.gpgsign", "true") {
-        output += "[OK] Enabled GPG commit signing\n";
+    }
+
+    if configureGPG {
+      if signingFormat == "ssh" && sshKeyPath != "" {
+        // SSH signing (git 2.34+)
+        if setGitConfig(path, "gpg.format", "ssh") {
+          output += "[OK] Set signing format: ssh\n";
+        }
+        const home = getEnvHome();
+        const expandedPath = if sshKeyPath.startsWith("~") then home + sshKeyPath[1..] else sshKeyPath;
+        if setGitConfig(path, "user.signingkey", expandedPath) {
+          output += "[OK] Set SSH signing key: " + expandedPath + "\n";
+        }
+        if setGitConfig(path, "commit.gpgsign", "true") {
+          output += "[OK] Enabled SSH commit signing\n";
+        }
+
+        // Add hardware key warning for SSH
+        if hardwareKey {
+          output += "\n[HARDWARE KEY WARNING]\n";
+          output += "  SSH signing key is FIDO2 (hardware-backed)\n";
+          if touchPolicy == "on" {
+            output += "  Touch policy: on - Physical touch required for EACH signature\n";
+            output += "  Agent CANNOT automate signing - user must touch YubiKey when committing\n";
+          } else if touchPolicy == "cached" {
+            output += "  Touch policy: cached - Touch once, then signatures cached briefly\n";
+          }
+        }
+
+      } else if gpgKeyId != "" && gpgKeyId != "auto" {
+        // GPG signing
+        if setGitConfig(path, "gpg.format", "gpg") {
+          output += "[OK] Set signing format: gpg\n";
+        }
+        if setGitConfig(path, "user.signingkey", gpgKeyId) {
+          output += "[OK] Set GPG signing key: " + gpgKeyId + "\n";
+        }
+        if setGitConfig(path, "commit.gpgsign", "true") {
+          output += "[OK] Enabled GPG commit signing\n";
+        }
+
+        // Add hardware key warning for GPG
+        if hardwareKey {
+          output += "\n[HARDWARE KEY WARNING]\n";
+          output += "  GPG signing key " + gpgKeyId + " is on a hardware token (YubiKey)\n";
+          if touchPolicy == "on" {
+            output += "  Touch policy: on - Physical touch required for EACH signature\n";
+            output += "  Agent CANNOT automate signing - user must touch YubiKey when committing\n";
+          } else if touchPolicy == "cached" {
+            output += "  Touch policy: cached - Touch once, then signatures cached briefly\n";
+          } else {
+            output += "  Touch policy: " + touchPolicy + "\n";
+          }
+          output += "  Use 'juggler_gpg_status' to check YubiKey presence before committing\n";
+        }
       }
     }
 
@@ -1191,6 +1274,290 @@ prototype module Tools {
     output += "\nTo implement sync, the following modules are needed:\n";
     output += "  - Config.chpl: SSH config parser\n";
     output += "  - GlobalConfig.chpl: Managed block updater\n";
+
+    return (true, output);
+  }
+
+  /*
+   * Handle juggler_gpg_status tool call.
+   *
+   * Checks GPG/SSH signing readiness including hardware token status.
+   * Returns whether signing is possible, touch requirements, and guidance.
+   */
+  proc handleGPGStatus(params: string): (bool, string) {
+    stderr.writeln("Tools: handleGPGStatus");
+
+    // Get optional parameters
+    const (hasIdentity, identityName) = Protocol.extractJsonString(params, "identity");
+    const (hasPath, repoPath) = Protocol.extractJsonString(params, "repoPath");
+    const path = if hasPath && repoPath != "" then repoPath else getCwd();
+
+    var output = "GPG/SSH Signing Status\n";
+    output += "======================\n\n";
+
+    // Check if GPG is available
+    var gpgInstalled = false;
+    try {
+      var p = spawn(["which", "gpg"], stdout=pipeStyle.close, stderr=pipeStyle.close);
+      p.wait();
+      gpgInstalled = p.exitCode == 0;
+    } catch {
+      gpgInstalled = false;
+    }
+
+    output += "GPG Availability: " + (if gpgInstalled then "Installed" else "Not installed") + "\n\n";
+
+    // Get identity to check
+    var identityToCheck = "";
+    var signingFormat = "gpg";
+    var gpgKeyId = "";
+    var sshKeyPath = "";
+    var hardwareKey = false;
+    var touchPolicy = "";
+
+    if hasIdentity && identityName != "" {
+      identityToCheck = identityName;
+    } else {
+      // Try to detect from repository
+      if exists(path + "/.git") {
+        const (urlOk, remoteUrl) = getGitRemoteUrl(path);
+        if urlOk {
+          if remoteUrl.find("gitlab-personal:") != -1 {
+            identityToCheck = "gitlab-personal";
+          } else if remoteUrl.find("gitlab-work:") != -1 {
+            identityToCheck = "gitlab-work";
+          } else if remoteUrl.find("github.com") != -1 {
+            identityToCheck = "github-personal";
+          }
+        }
+      }
+    }
+
+    // Read config to get identity GPG settings
+    const (configOk, configContent) = readConfigFile();
+
+    if configOk && identityToCheck != "" {
+      const (hasIdentities, identitiesJson) = Protocol.extractJsonObject(configContent, "identities");
+      if hasIdentities {
+        const (hasId, idJson) = Protocol.extractJsonObject(identitiesJson, identityToCheck);
+        if hasId {
+          const (hasGpg, gpgJson) = Protocol.extractJsonObject(idJson, "gpg");
+          if hasGpg {
+            const (_, keyId) = Protocol.extractJsonString(gpgJson, "keyId");
+            const (_, format) = Protocol.extractJsonString(gpgJson, "format");
+            const (_, sshKey) = Protocol.extractJsonString(gpgJson, "sshKeyPath");
+            const (_, hwKey) = Protocol.extractJsonString(gpgJson, "hardwareKey");
+            const (_, touch) = Protocol.extractJsonString(gpgJson, "touchPolicy");
+
+            gpgKeyId = keyId;
+            signingFormat = if format != "" then format else "gpg";
+            sshKeyPath = sshKey;
+            hardwareKey = hwKey == "true";
+            touchPolicy = touch;
+          }
+        }
+      }
+    }
+
+    output += "Identity: " + (if identityToCheck != "" then identityToCheck else "(none detected)") + "\n";
+    output += "Signing Format: " + signingFormat + "\n";
+
+    if signingFormat == "ssh" {
+      // SSH signing status
+      output += "SSH Key Path: " + sshKeyPath + "\n";
+
+      if sshKeyPath != "" {
+        const home = getEnvHome();
+        const expandedPath = if sshKeyPath.startsWith("~") then home + sshKeyPath[1..] else sshKeyPath;
+
+        if exists(expandedPath) {
+          output += "SSH Key Status: Found\n";
+
+          // Check if it's a FIDO2 key
+          if sshKeyPath.find("-sk") != -1 {
+            output += "Key Type: FIDO2 (hardware-backed)\n";
+            hardwareKey = true;
+          } else {
+            output += "Key Type: Software\n";
+          }
+        } else {
+          output += "SSH Key Status: NOT FOUND\n";
+          output += "  [ERROR] SSH key file does not exist: " + expandedPath + "\n";
+        }
+      }
+
+    } else {
+      // GPG signing status
+      output += "GPG Key ID: " + (if gpgKeyId != "" then gpgKeyId else "(not configured)") + "\n";
+
+      if gpgKeyId != "" && gpgInstalled {
+        // Check if key exists
+        var keyExists = false;
+        try {
+          var p = spawn(["gpg", "--list-secret-keys", gpgKeyId],
+                        stdout=pipeStyle.close, stderr=pipeStyle.close);
+          p.wait();
+          keyExists = p.exitCode == 0;
+        } catch {
+          keyExists = false;
+        }
+
+        output += "GPG Key Status: " + (if keyExists then "Found" else "NOT FOUND") + "\n";
+
+        if !keyExists {
+          output += "  [ERROR] GPG key not found in keyring\n";
+        }
+      }
+    }
+
+    output += "\n";
+
+    // Hardware token status
+    output += "Hardware Token Status:\n";
+    output += "  Hardware Key: " + (if hardwareKey then "Yes" else "No") + "\n";
+
+    if hardwareKey {
+      output += "  Touch Policy: " + (if touchPolicy != "" then touchPolicy else "unknown") + "\n";
+
+      // Try to detect YubiKey
+      var yubiKeyPresent = false;
+      var yubiKeySerial = "";
+
+      try {
+        var p = spawn(["gpg", "--card-status"],
+                      stdout=pipeStyle.pipe, stderr=pipeStyle.close);
+        p.wait();
+
+        if p.exitCode == 0 {
+          yubiKeyPresent = true;
+          var cardOutput: string;
+          p.stdout.readAll(cardOutput);
+
+          // Extract serial
+          for line in cardOutput.split("\n") {
+            if line.find("Serial number") != -1 {
+              const parts = line.split(":");
+              if parts.size > 1 {
+                yubiKeySerial = parts[1].strip();
+              }
+            }
+          }
+        }
+      } catch {
+        yubiKeyPresent = false;
+      }
+
+      output += "  YubiKey Present: " + (if yubiKeyPresent then "Yes" else "No") + "\n";
+      if yubiKeyPresent && yubiKeySerial != "" {
+        output += "  YubiKey Serial: " + yubiKeySerial + "\n";
+      }
+
+      // Get touch policies from ykman if available
+      try {
+        var ykmanCheck = spawn(["which", "ykman"], stdout=pipeStyle.close, stderr=pipeStyle.close);
+        ykmanCheck.wait();
+
+        if ykmanCheck.exitCode == 0 {
+          var ykmanP = spawn(["ykman", "openpgp", "info"],
+                             stdout=pipeStyle.pipe, stderr=pipeStyle.close);
+          ykmanP.wait();
+
+          if ykmanP.exitCode == 0 {
+            var ykmanOutput: string;
+            ykmanP.stdout.readAll(ykmanOutput);
+
+            output += "\n  Touch Policies (from ykman):\n";
+
+            for line in ykmanOutput.split("\n") {
+              if line.find("touch") != -1 || line.find("Touch") != -1 {
+                output += "    " + line.strip() + "\n";
+              }
+            }
+          }
+        }
+      } catch {
+        // ykman not available
+      }
+    }
+
+    output += "\n";
+
+    // Signing readiness assessment
+    output += "Signing Readiness:\n";
+
+    var canSign = true;
+    var reason = "";
+
+    if signingFormat == "gpg" {
+      if !gpgInstalled {
+        canSign = false;
+        reason = "GPG is not installed";
+      } else if gpgKeyId == "" {
+        canSign = false;
+        reason = "No GPG key configured for this identity";
+      } else if hardwareKey && touchPolicy == "on" {
+        canSign = false;
+        reason = "Physical YubiKey touch required for each signature (touch policy: on)";
+      }
+    } else {
+      // SSH signing
+      if sshKeyPath == "" {
+        canSign = false;
+        reason = "No SSH key path configured";
+      } else if hardwareKey && touchPolicy == "on" {
+        canSign = false;
+        reason = "Physical YubiKey touch required for each signature (touch policy: on)";
+      }
+    }
+
+    output += "  Can Sign Automatically: " + (if canSign then "Yes" else "No") + "\n";
+    if !canSign && reason != "" {
+      output += "  Reason: " + reason + "\n";
+    }
+
+    output += "\n";
+
+    // Guidance for agents
+    output += "Agent Guidance:\n";
+
+    if hardwareKey {
+      output += "  - This identity uses a hardware-backed signing key\n";
+      if touchPolicy == "on" {
+        output += "  - IMPORTANT: Physical YubiKey touch is required for EACH signature\n";
+        output += "  - Agent can configure identity but CANNOT automate signing\n";
+        output += "  - User must be present to touch YubiKey when committing\n";
+      } else if touchPolicy == "cached" {
+        output += "  - Touch is cached briefly after first use\n";
+        output += "  - User needs to touch YubiKey once, then can sign multiple times\n";
+        output += "  - Agent can proceed if user has recently touched the key\n";
+      } else {
+        output += "  - Touch policy may allow automated signing\n";
+      }
+    } else {
+      if canSign {
+        output += "  - Software signing key - can sign automatically\n";
+        output += "  - Agent can proceed with commits that require signing\n";
+      } else {
+        output += "  - Signing is not currently possible\n";
+        output += "  - Resolve the issue before attempting signed commits\n";
+      }
+    }
+
+    // Recommendations
+    output += "\nRecommendations:\n";
+
+    if !canSign {
+      if !gpgInstalled && signingFormat == "gpg" {
+        output += "  1. Install GPG: brew install gnupg\n";
+      }
+      if hardwareKey && touchPolicy == "on" {
+        output += "  1. Ensure YubiKey is connected before committing\n";
+        output += "  2. Be ready to touch YubiKey when prompted\n";
+        output += "  3. Consider using SSH signing with 'cached' touch for less friction\n";
+      }
+    } else {
+      output += "  - Signing is ready. Proceed with commits.\n";
+    }
 
     return (true, output);
   }
