@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# RemoteJuggler post-clone hook template
+# This would be used by 'git clone' if git supported it (it doesn't yet)
+#
+# Workaround: Use git config init.templateDir
+
+set -e
+
+# Check if remote-juggler is available
+if ! command -v remote-juggler &> /dev/null; then
+    exit 0
+fi
+
+# Detect and switch to appropriate identity
+remote-juggler detect --auto-switch --quiet || true
+
+exit 0

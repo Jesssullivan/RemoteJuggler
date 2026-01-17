@@ -46,7 +46,7 @@ quickchpl = "1.0.2"
 # The -M flag tells Chapel where to find submodules
 # --permit-unhandled-module-errors allows prototype-style error handling
 # -framework Security for macOS keychain integration
-compopts = ["-M", "src/remote_juggler", "-I", "c_src", "--permit-unhandled-module-errors", "--ldflags", "-framework Security"]
+compopts = ["-M", "src/remote_juggler", "-I", "c_src", "--permit-unhandled-module-errors", "--ldflags", "-framework Security -framework CoreFoundation"]
 
 # Main entry point
 main = "src/remote_juggler.chpl"

@@ -28,6 +28,7 @@ prototype module remote_juggler {
   include module GPG;
   include module Remote;
   include module Identity;
+  include module TokenHealth;
   include module Protocol;
   include module MCP;
   include module ACP;
@@ -43,6 +44,7 @@ prototype module remote_juggler {
   public use GPG;
   public use Remote;
   public use Identity;
+  public use TokenHealth;
   public use Protocol;
   public use MCP;
   public use ACP;
@@ -213,6 +215,8 @@ prototype module remote_juggler {
     writeln("    token get <n>     Retrieve token (masked output)");
     writeln("    token clear <n>   Remove token from keychain");
     writeln("    token verify      Test all configured credentials");
+    writeln("    token check-expiry [n]  Check token expiration status");
+    writeln("    token renew <n>   Renew expired/expiring token");
     writeln();
 
     writeln("  ", bold("GPG Signing:"));
@@ -512,6 +516,11 @@ prototype module remote_juggler {
       if result.remoteUpdated {
         writeln("  Remote:   ", green("Updated for identity"));
       }
+
+      // Check for token expiry warnings
+      writeln();
+      TokenHealth.warnIfExpiring(result.identity);
+
     } else {
       printError("Failed to switch: " + result.message);
     }
@@ -581,6 +590,21 @@ prototype module remote_juggler {
       } else {
         writeln(yellow("Not verified"));
         writeln("    Add at: ", GPG.getGPGSettingsURL(identity));
+      }
+    }
+
+    // Check token expiry if credentials are available
+    if result.credentialAvailable {
+      write("  Token Expiry...   ");
+      const healthResult = TokenHealth.checkTokenHealth(identity);
+      if healthResult.isExpired {
+        writeln(red("EXPIRED"));
+      } else if healthResult.needsRenewal {
+        writeln(yellow("Expiring soon"), " (", healthResult.daysUntilExpiry, " days)");
+      } else if healthResult.daysUntilExpiry < 999999 {
+        writeln(green("OK"), " ", dim("(" + healthResult.daysUntilExpiry:string + " days)"));
+      } else {
+        writeln(green("OK"), " ", dim("(unknown expiry)"));
       }
     }
 
@@ -854,7 +878,7 @@ prototype module remote_juggler {
   proc handleToken(args: list(string)) {
     if args.size < 1 {
       printError("Missing subcommand");
-      writeln("Usage: remote-juggler token <set|get|clear|verify> [identity]");
+      writeln("Usage: remote-juggler token <set|get|clear|verify|check-expiry|renew> [identity]");
       return;
     }
 
@@ -866,9 +890,11 @@ prototype module remote_juggler {
       when "get" do handleTokenGet(subArgs);
       when "clear", "delete", "rm" do handleTokenClear(subArgs);
       when "verify", "test" do handleTokenVerify();
+      when "check-expiry", "expiry", "check" do handleTokenCheckExpiry(subArgs);
+      when "renew", "refresh" do handleTokenRenew(subArgs);
       otherwise {
         printError("Unknown token subcommand: " + subcommand);
-        writeln("Available: set, get, clear, verify");
+        writeln("Available: set, get, clear, verify, check-expiry, renew");
       }
     }
   }
@@ -999,9 +1025,76 @@ prototype module remote_juggler {
       const (hasToken, _) = ProviderCLI.resolveCredential(identity);
       if hasToken {
         writeln(green("OK"));
+
+        // Also check for expiry warnings
+        const healthResult = TokenHealth.checkTokenHealth(identity);
+        if healthResult.needsRenewal {
+          writeln("    ", yellow("⚠️  Expires in " + healthResult.daysUntilExpiry:string + " days"));
+        } else if healthResult.isExpired {
+          writeln("    ", red("❌ Expired"));
+        }
       } else {
         writeln(yellow("Not found"));
       }
+    }
+  }
+
+  proc handleTokenCheckExpiry(args: list(string)) {
+    printDebug("Checking token expiry");
+
+    const identities = Identity.listIdentities();
+
+    if args.size > 0 {
+      // Check specific identity
+      const name = args[0];
+      const identity = GlobalConfig.getIdentity(name);
+
+      if identity.name == "" {
+        printError("Identity not found: " + name);
+        return;
+      }
+
+      writeln(bold("Token Health: "), identity.name);
+      writeln();
+
+      const healthResult = TokenHealth.checkTokenHealth(identity);
+      write(TokenHealth.formatHealthResult(healthResult));
+
+    } else {
+      // Check all identities
+      TokenHealth.printTokenHealthSummary(identities);
+    }
+  }
+
+  proc handleTokenRenew(args: list(string)) {
+    if args.size < 1 {
+      printError("Missing identity name");
+      writeln("Usage: remote-juggler token renew <identity>");
+      return;
+    }
+
+    const name = args[0];
+    printDebug("Renewing token for: " + name);
+
+    const identity = GlobalConfig.getIdentity(name);
+    if identity.name == "" {
+      printError("Identity not found: " + name);
+      return;
+    }
+
+    // Show current token health
+    writeln(bold("Current Token Status:"));
+    writeln();
+    const healthResult = TokenHealth.checkTokenHealth(identity);
+    write(TokenHealth.formatHealthResult(healthResult));
+    writeln();
+
+    // Prompt for renewal
+    const renewed = TokenHealth.renewToken(identity);
+    if renewed {
+      printSuccess("Token renewed successfully");
+    } else {
+      printError("Token renewal failed or cancelled");
     }
   }
 

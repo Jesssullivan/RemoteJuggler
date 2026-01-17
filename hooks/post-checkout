@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# RemoteJuggler post-checkout hook
+# Auto-switches identity when checking out branches or cloning
+#
+# Install: remote-juggler hooks install
+# Remove: remote-juggler hooks uninstall
+
+set -e
+
+# Only run for branch checkouts (not file checkouts)
+# $3 is 1 for branch checkout, 0 for file checkout
+if [ "$3" != "1" ]; then
+    exit 0
+fi
+
+# Check if remote-juggler is available
+if ! command -v remote-juggler &> /dev/null; then
+    exit 0
+fi
+
+# Detect and switch to appropriate identity
+remote-juggler detect --auto-switch 2>&1 | grep -v "^MCP:" || true
+
+exit 0
