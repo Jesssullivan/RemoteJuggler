@@ -48,6 +48,7 @@ build:linux-arm64:
   image: chapel/chapel:${CHAPEL_VERSION}
   tags:
     - arm64
+    - docker  # Force Docker executor (Chapel image requires Docker)
   <<: *mason_cache
   script:
     - mason build --release
@@ -65,6 +66,7 @@ build:darwin-arm64:
   tags:
     - macos
     - arm64
+    - shell  # Force native shell executor (Chapel/Homebrew not available in Docker)
   <<: *mason_cache
   script:
     # Ensure Chapel is available (installed via Homebrew or similar)

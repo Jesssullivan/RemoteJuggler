@@ -1,0 +1,83 @@
+# typed: false
+# frozen_string_literal: true
+
+# Homebrew formula for RemoteJuggler
+# Git identity management tool with MCP/ACP agent protocol support
+#
+# Installation:
+#   brew tap tinyland/tools https://gitlab.com/tinyland/homebrew-tools.git
+#   brew install remote-juggler
+#
+class RemoteJuggler < Formula
+  desc "Backend-agnostic git identity management with MCP/ACP agent protocol support"
+  homepage "https://gitlab.com/tinyland/projects/remote-juggler"
+  version "2.0.0"
+  license "Zlib"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://gitlab.com/tinyland/projects/remote-juggler/-/releases/v2.0.0/downloads/remote-juggler-darwin-arm64.tar.gz"
+      sha256 "PLACEHOLDER_DARWIN_ARM64" # darwin-arm64
+    else
+      url "https://gitlab.com/tinyland/projects/remote-juggler/-/releases/v2.0.0/downloads/remote-juggler-darwin-amd64.tar.gz"
+      sha256 "PLACEHOLDER_DARWIN_AMD64" # darwin-amd64
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.arm?
+      url "https://gitlab.com/tinyland/projects/remote-juggler/-/releases/v2.0.0/downloads/remote-juggler-linux-arm64.tar.gz"
+      sha256 "PLACEHOLDER_LINUX_ARM64" # linux-arm64
+    else
+      url "https://gitlab.com/tinyland/projects/remote-juggler/-/releases/v2.0.0/downloads/remote-juggler-linux-amd64.tar.gz"
+      sha256 "PLACEHOLDER_LINUX_AMD64" # linux-amd64
+    end
+  end
+
+  def install
+    bin.install "remote-juggler"
+
+    # Install shell completions if present
+    bash_completion.install "completions/remote-juggler.bash" if File.exist?("completions/remote-juggler.bash")
+    zsh_completion.install "completions/_remote-juggler" if File.exist?("completions/_remote-juggler")
+    fish_completion.install "completions/remote-juggler.fish" if File.exist?("completions/remote-juggler.fish")
+
+    # Install man page if present
+    man1.install "man/remote-juggler.1" if File.exist?("man/remote-juggler.1")
+  end
+
+  def caveats
+    <<~EOS
+      RemoteJuggler has been installed!
+
+      Quick start:
+        remote-juggler status          # Show current identity
+        remote-juggler list            # List all identities
+        remote-juggler switch <name>   # Switch identity
+
+      MCP server mode (for AI agents):
+        remote-juggler --mode=mcp
+
+      Configuration:
+        ~/.config/remote-juggler/config.json
+
+      Documentation:
+        https://tinyland.gitlab.io/projects/remote-juggler/
+
+      For Claude Code integration, add to .mcp.json:
+        {
+          "mcpServers": {
+            "remote-juggler": {
+              "command": "#{opt_bin}/remote-juggler",
+              "args": ["--mode=mcp"]
+            }
+          }
+        }
+    EOS
+  end
+
+  test do
+    assert_match "RemoteJuggler v#{version}", shell_output("#{bin}/remote-juggler --version")
+    assert_match "identity", shell_output("#{bin}/remote-juggler --help")
+  end
+end

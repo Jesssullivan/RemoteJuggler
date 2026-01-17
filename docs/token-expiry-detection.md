@@ -307,7 +307,7 @@ Token expiry detection is a new feature. Contributions welcome for:
 - Automated renewal workflows
 - Desktop notification integration
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
+See the project repository for contribution guidelines.
 
 ## See Also
 

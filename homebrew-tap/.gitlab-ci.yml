@@ -1,0 +1,43 @@
+# GitLab CI for Homebrew Tap
+# This pipeline validates formulas on push/MR
+
+stages:
+  - lint
+  - test
+
+variables:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
+# Validate Ruby syntax of formulas
+lint:ruby:
+  stage: lint
+  image: ruby:3.2-alpine
+  script:
+    - ruby -c Formula/*.rb
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Validate formula style (requires Homebrew)
+lint:brew-style:
+  stage: lint
+  image: homebrew/brew:latest
+  script:
+    - brew style --fix Formula/*.rb || true
+    - brew style Formula/*.rb
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Test formula audit
+test:brew-audit:
+  stage: test
+  image: homebrew/brew:latest
+  script:
+    - brew audit --strict Formula/*.rb
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
