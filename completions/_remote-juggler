@@ -1,0 +1,58 @@
+#compdef remote-juggler
+# Zsh completion for remote-juggler
+# Install to /usr/local/share/zsh/site-functions/_remote-juggler
+
+_remote-juggler() {
+    local line state
+
+    _arguments -C \
+        '1: :_remote_juggler_commands' \
+        '*:: :->args'
+
+    case $state in
+        args)
+            case $line[1] in
+                config)
+                    _arguments '1: :(show add edit remove import sync)'
+                    ;;
+                token)
+                    _arguments '1: :(set get clear verify)'
+                    ;;
+                gpg)
+                    _arguments '1: :(status configure verify)'
+                    ;;
+                debug)
+                    _arguments '1: :(ssh-config git-config keychain)'
+                    ;;
+                switch|to|validate|edit|remove|set|get|clear|configure)
+                    _remote_juggler_identities
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_remote_juggler_commands() {
+    local -a commands
+    commands=(
+        'list:List all configured identities'
+        'detect:Detect identity for current repository'
+        'switch:Switch to specified identity'
+        'to:Alias for switch'
+        'validate:Test SSH/API connectivity'
+        'status:Show current identity status'
+        'config:Configuration management'
+        'token:Token management'
+        'gpg:GPG signing management'
+        'debug:Debug utilities'
+    )
+    _describe 'command' commands
+}
+
+_remote_juggler_identities() {
+    local -a identities
+    identities=(${(f)"$(remote-juggler list 2>/dev/null | grep -E '^  - ' | sed 's/^  - //')"})
+    _describe 'identity' identities
+}
+
+_remote-juggler "$@"
