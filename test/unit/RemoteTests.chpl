@@ -304,7 +304,6 @@ prototype module RemoteTests {
         connected = true,
         authenticated = true,
         username = "git",
-        hostname = "gitlab.com",
         message = "Success"
       );
 
