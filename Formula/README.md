@@ -5,7 +5,7 @@
 ### From Homebrew Tap (Recommended)
 
 ```bash
-brew tap tinyland/remote-juggler
+brew tap tinyland/tools https://gitlab.com/tinyland/homebrew-tools.git
 brew install remote-juggler
 ```
 
@@ -78,7 +78,7 @@ brew upgrade remote-juggler
 
 ```bash
 brew uninstall remote-juggler
-brew untap tinyland/remote-juggler
+brew untap tinyland/tools
 ```
 
 ## Development
@@ -97,27 +97,25 @@ brew audit --strict --online ./Formula/remote-juggler.rb
 
 ## Creating a Homebrew Tap
 
-To create the official tap repository:
+The official tap repository is at `tinyland/homebrew-tools`:
 
 ```bash
-# Create tap repo
-mkdir -p homebrew-remote-juggler
-cd homebrew-remote-juggler
-cp ../remote-juggler/Formula/remote-juggler.rb .
+# Clone the tap repo
+git clone git@gitlab.com:tinyland/homebrew-tools.git
+cd homebrew-tools
 
-# Initialize git
-git init
-git add remote-juggler.rb
-git commit -m "feat: initial Homebrew formula for RemoteJuggler"
+# Copy the formula
+cp ../remote-juggler/Formula/remote-juggler.rb Formula/
 
-# Push to GitLab
-git remote add origin git@gitlab.com:tinyland/homebrew-remote-juggler.git
-git push -u origin main
+# Commit and push
+git add Formula/remote-juggler.rb
+git commit -m "feat: update RemoteJuggler formula"
+git push
 ```
 
 Then users can install with:
 ```bash
-brew tap tinyland/remote-juggler
+brew tap tinyland/tools https://gitlab.com/tinyland/homebrew-tools.git
 brew install remote-juggler
 ```
 

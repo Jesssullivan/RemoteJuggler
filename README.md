@@ -22,6 +22,13 @@ Written in [Chapel](https://chapel-lang.org/) for high performance and cross-pla
 curl -fsSL https://gitlab.com/tinyland/projects/remote-juggler/-/raw/main/install.sh | bash
 ```
 
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap tinyland/tools https://gitlab.com/tinyland/homebrew-tools.git
+brew install remote-juggler
+```
+
 ### macOS (DMG)
 
 Download the latest notarized DMG from [Releases](https://gitlab.com/tinyland/projects/remote-juggler/-/releases) and drag to Applications.

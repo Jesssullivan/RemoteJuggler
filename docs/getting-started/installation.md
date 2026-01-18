@@ -41,6 +41,40 @@ Override the default version:
 REMOTE_JUGGLER_VERSION=2.0.1 curl -sSL .../install.sh | bash
 ```
 
+## Homebrew (macOS/Linux)
+
+Install via the Tinyland Homebrew tap:
+
+```bash
+# Add the tap
+brew tap tinyland/tools https://gitlab.com/tinyland/homebrew-tools.git
+
+# Install
+brew install remote-juggler
+```
+
+### Updating
+
+```bash
+brew update
+brew upgrade remote-juggler
+```
+
+### Shell Completions
+
+Homebrew automatically installs shell completions. To enable them:
+
+```bash
+# Bash (add to ~/.bashrc)
+source $(brew --prefix)/etc/bash_completion.d/remote-juggler.bash
+
+# Zsh (add to ~/.zshrc)
+fpath=($(brew --prefix)/share/zsh/site-functions $fpath)
+autoload -Uz compinit && compinit
+
+# Fish - completions auto-load
+```
+
 ## Binary Download
 
 Download pre-built binaries directly:
