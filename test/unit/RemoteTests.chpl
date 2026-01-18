@@ -266,18 +266,18 @@ prototype module RemoteTests {
       }
     }
 
-    // Test 9: RemoteResult record
+    // Test 9: RemoteOpResult record
     {
-      writeln("Test 9: RemoteResult record");
+      writeln("Test 9: RemoteOpResult record");
       var allPass = true;
 
-      const success = new RemoteResult(true, "Operation succeeded");
+      const success = new RemoteOpResult(true, "Operation succeeded");
       if !success.success {
         writeln("  FAIL: success.success should be true");
         allPass = false;
       }
 
-      const failure = new RemoteResult(false, "Operation failed", 1);
+      const failure = new RemoteOpResult(false, "Operation failed", 1);
       if failure.success {
         writeln("  FAIL: failure.success should be false");
         allPass = false;
