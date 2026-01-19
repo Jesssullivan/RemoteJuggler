@@ -77,7 +77,7 @@ autoload -Uz compinit && compinit
 
 ## Binary Download
 
-Download pre-built binaries directly:
+Download pre-built binaries from the [Releases page](https://gitlab.com/tinyland/projects/remote-juggler/-/releases):
 
 | Platform | Architecture | Download |
 |----------|--------------|----------|
@@ -87,8 +87,7 @@ Download pre-built binaries directly:
 
 ```bash
 # Example: macOS arm64
-curl -L https://gitlab.com/tinyland/projects/remote-juggler/-/releases/v2.0.0/downloads/remote-juggler-darwin-arm64 \
-  -o ~/.local/bin/remote-juggler
+# Download the latest release from the releases page, then:
 chmod +x ~/.local/bin/remote-juggler
 ```
 

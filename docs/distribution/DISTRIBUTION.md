@@ -109,9 +109,9 @@ SHA256SUMS.txt.asc
 
 **Verification workflow for users:**
 ```bash
-# Download checksum file and signature
-curl -LO https://github.com/.../SHA256SUMS.txt
-curl -LO https://github.com/.../SHA256SUMS.txt.asc
+# Download checksum file and signature from GitLab releases
+curl -LO https://gitlab.com/tinyland/projects/remote-juggler/-/releases/.../SHA256SUMS.txt
+curl -LO https://gitlab.com/tinyland/projects/remote-juggler/-/releases/.../SHA256SUMS.txt.asc
 
 # Verify GPG signature
 gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
@@ -127,7 +127,7 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 class RemoteJuggler < Formula
   desc "Backend-agnostic git identity management with MCP support"
   homepage "https://gitlab.com/tinyland/projects/remote-juggler"
-  url "https://github.com/.../remote-juggler-2.0.0.tar.gz"
+  url "https://gitlab.com/tinyland/projects/remote-juggler/-/archive/v2.0.0/remote-juggler-v2.0.0.tar.gz"
   sha256 "..."
   license "Zlib"
 
@@ -302,7 +302,7 @@ detect_platform() {
 # Download and verify
 download_and_verify() {
     local platform="$1"
-    local url="https://github.com/tinyland/remote-juggler/releases/download/v${VERSION}"
+    local url="https://gitlab.com/tinyland/projects/remote-juggler/-/releases/v${VERSION}/downloads"
     local binary="remote-juggler-${VERSION}-${platform}.tar.gz"
 
     echo "Downloading ${binary}..."
@@ -372,7 +372,7 @@ main "$@"
 
 **Usage:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tinyland/remote-juggler/main/install.sh | bash
+curl -fsSL https://gitlab.com/tinyland/projects/remote-juggler/-/raw/main/install.sh | bash
 ```
 
 ---

@@ -21,7 +21,7 @@ The configuration file structure (see `install.sh:173-191`):
 
 ```json
 {
-  "$schema": "https://remote-juggler.dev/schema/v2.json",
+  "$schema": "https://tinyland.gitlab.io/projects/remote-juggler/schema/v2.json",
   "version": "2.0.0",
   "identities": {},
   "settings": {

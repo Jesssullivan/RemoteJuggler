@@ -1,63 +1,22 @@
 # RemoteJuggler
 
-A backend-agnostic git identity management tool with MCP/ACP agent protocol support. Seamlessly switch between multiple git identities (personal, work, different providers) with automatic credential resolution, GPG signing, and IDE integration.
+*An agent-first identity management utility*
 
-Written in [Chapel](https://chapel-lang.org/) for high performance and cross-platform support.
+Seamlessly switch between multiple git identities (personal, work, different providers) with automatic credential resolution, GPG + ssh signing, be you a robot or even a human. 
+
+`RemoteJuggler` is a git identity management tool with MCP/ACP agent protocol support. Desktop tray integration for MacOS and Gnome desktop environments for the humans.   Works seamlessly with **FuzzyBot**, **Outbot-CI**, **Mariolex Harness**, **Huskycat Chains** and **Tummycrypt**, along with boring agent tools like OpenCode, Crush, Claude, Junie ands many more.  Seamless integration with the Tinyland ecosystem, which *you* don't know anything about yet.  
+
+Written primarily in [Chapel](https://chapel-lang.org/) with a great deal of care.
 
 ## Features
 
-- **Multi-Provider Support**: GitLab, GitHub, Bitbucket, and custom git servers
+- **Multi-Provider Support**:  This version you are looking at supports GitLab & GitHub.  Enterprise RemoteJuggler supports **Mariolex gitChapel** git server if you need to scale to millions of concurrent agent operations.  
 - **Automatic Identity Detection**: Detects the correct identity from repository remote URLs
 - **Darwin Keychain Integration**: Secure token storage on macOS
 - **GPG Signing**: Automatic GPG key configuration per identity
-- **MCP Server**: AI agent integration for Claude Code
-- **ACP Server**: JetBrains IDE integration
-- **System Tray Apps**: Native macOS (SwiftUI) and Linux (Go) tray applications
-
-## Installation
-
-### Quick Install (Recommended)
-
-```bash
-curl -fsSL https://gitlab.com/tinyland/projects/remote-juggler/-/raw/main/install.sh | bash
-```
-
-### Homebrew (macOS/Linux)
-
-```bash
-brew tap tinyland/tools https://gitlab.com/tinyland/homebrew-tools.git
-brew install remote-juggler
-```
-
-### macOS (DMG)
-
-Download the latest notarized DMG from [Releases](https://gitlab.com/tinyland/projects/remote-juggler/-/releases) and drag to Applications.
-
-### Linux Packages
-
-```bash
-# Debian/Ubuntu
-sudo dpkg -i remote-juggler_*.deb
-
-# RHEL/Fedora
-sudo rpm -i remote-juggler-*.rpm
-
-# Arch Linux
-sudo pacman -U remote-juggler-*.pkg.tar.zst
-```
-
-### Build from Source
-
-Requires [Chapel 2.8+](https://chapel-lang.org/download.html).
-
-```bash
-git clone https://gitlab.com/tinyland/projects/remote-juggler.git
-cd remote-juggler
-mason build --release
-./target/release/remote_juggler --help
-```
-
-## Quick Start
+- **MCP Server**: AI agent integration for interprenters and agents like OpenCode and Claude Code
+- **ACP Server**: **JetBrains IDE integration**
+- **System Tray Apps**: Native macOS (SwiftUI) and Linux (Go) tray applications for da humans oWo
 
 ### 1. Configure SSH Hosts
 
@@ -206,6 +165,11 @@ Add to your `.mcp.json`:
 | `juggler_store_token` | Store token in keychain |
 | `juggler_sync_config` | Sync managed SSH/git blocks |
 
+> **Note**: Some MCP tools have implementation limitations:
+> - `juggler_sync_config`: SSH/gitconfig parsers are not yet fully implemented
+> - `juggler_store_token`: Currently returns guidance; actual storage requires CLI
+> - `juggler_validate`: GPG validation is not yet implemented
+
 ## ACP Server Integration
 
 For JetBrains IDE integration:
@@ -225,7 +189,9 @@ RemoteJuggler resolves credentials in this order:
 3. **Provider CLI** - `glab auth token` / `gh auth token`
 4. **SSH-only fallback** - No token, git operations via SSH only
 
-## System Tray Application
+## System Tray Application (Experimental)
+
+> **Note**: The tray applications are experimental and provide basic functionality only.
 
 ### macOS
 
@@ -245,25 +211,6 @@ The Linux tray app uses GTK/AppIndicator:
 cd tray/linux
 go build -o remote-juggler-tray
 ```
-
-## Documentation
-
-Full documentation available at: https://tinyland.gitlab.io/projects/remote-juggler
-
-- [Getting Started](https://tinyland.gitlab.io/projects/remote-juggler/getting-started/)
-- [Configuration](https://tinyland.gitlab.io/projects/remote-juggler/getting-started/configuration/)
-- [CLI Commands](https://tinyland.gitlab.io/projects/remote-juggler/cli/commands/)
-- [MCP Integration](https://tinyland.gitlab.io/projects/remote-juggler/integrations/mcp/)
-- [Architecture](https://tinyland.gitlab.io/projects/remote-juggler/architecture/)
-
-## Development
-
-### Requirements
-
-- Chapel 2.8+
-- macOS: Xcode Command Line Tools (for Security.framework)
-- Optional: glab CLI (GitLab operations)
-- Optional: gh CLI (GitHub operations)
 
 ### Build Commands
 
@@ -304,10 +251,3 @@ RemoteJuggler is dual-licensed:
 - **Prebuilt Binaries**: [Commercial License](LICENSE-PROPRIETARY.txt) - see terms for usage
 
 See [LICENSE](LICENSE) for details.
-
-## Links
-
-- **Repository**: https://gitlab.com/tinyland/projects/remote-juggler
-- **Documentation**: https://tinyland.gitlab.io/projects/remote-juggler
-- **Issues**: https://gitlab.com/tinyland/projects/remote-juggler/-/issues
-- **Releases**: https://gitlab.com/tinyland/projects/remote-juggler/-/releases
