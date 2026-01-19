@@ -244,6 +244,16 @@ remote-juggler/
 └── scripts/                     # Build/install scripts
 ```
 
+## Todos:
+- [ ] Lace up this public demo repo with outbot harness
+- [ ] Add screenshots and workflow for humans
+- [ ] Publish docs
+- [ ] Publish public propaganda page and artifactory 
+- [ ] Publish prebuilt binaries, rpm and brew packages UwU
+- [ ] Publish RemoteJuggler's Tinyland ecosystem facets when appropriate to do so, aiming for Q4 2026
+
+
+
 ## License
 
 RemoteJuggler is dual-licensed:
