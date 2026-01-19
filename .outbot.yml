@@ -1,0 +1,326 @@
+# .outbot.yml - Remote Juggler GitLab → GitHub Sync
+# Chapel/MCP identity management tool sync to GitHub mirror
+project_name: remote-juggler-github-sync
+description: Sync Tinyland gitlab-switcher (RemoteJuggler) to GitHub mirror
+
+# Source repository (Tinyland GitLab)
+source:
+  platform: gitlab
+  url: git@gitlab-personal:tinyland/projects/gitlab-switcher.git
+
+# GitLab authentication (upstream)
+gitlab:
+  token_var: GITLAB_PERSONAL_PAT
+  url: https://gitlab.com
+
+# GitHub authentication for downstream
+github:
+  token_var: GITHUB_TOKEN
+  api_url: https://api.github.com
+
+# Downstream repository configuration
+downstream:
+  repositories:
+    - https://github.com/Jesssullivan/RemoteJuggler.git
+  branch_mapping:
+    main: sid/outbot  # Sync main → sid/outbot branch
+
+  # Unified Strategy Configuration
+  strategy: "auto"  # auto-selects zone_squash for first sync, privacy_incremental after
+
+  # Privacy Protection Mode - STRICT for public mirrors
+  privacy_mode: strict
+
+  # ============================================
+  # AI-Powered Commit Messages (5-Layer Fallback)
+  # ============================================
+  # Fallback chain: Duo → Multi-AI → Smart Summary → Forward → Canned
+  commit_messages:
+    # GitLab Duo AI (requires self-managed instance with feature flag)
+    duo_commit_msg:
+      enabled: true
+      token_var: "GITLAB_PERSONAL_PAT"
+      format: "conventional"
+      max_message_length: 500
+
+    # Multi-provider AI (fallback #2) - OpenAI, Anthropic, Ollama
+    openai_commit_msg:
+      enabled: false
+      api_key_var: "OPENAI_API_KEY"
+      model: "gpt-4-turbo"
+      temperature: 0.7
+      max_tokens: 200
+
+    anthropic_commit_msg:
+      enabled: false
+      api_key_var: "ANTHROPIC_API_KEY"
+      model: "claude-3-haiku-20240307"
+      temperature: 0.7
+      max_tokens: 200
+
+    ollama_commit_msg:
+      enabled: false
+      endpoint: "http://localhost:11434"
+      model: "codellama:7b"
+      temperature: 0.7
+      max_tokens: 200
+
+    # Forward upstream commit messages (fallback #4)
+    forward_commit_msg:
+      enabled: true
+      mode: "latest"
+      max_commits: 10
+      truncate_at: 300
+
+    # Canned messages (fallback #5, always succeeds)
+    canned_messages:
+      enabled: true
+      rotation_mode: "deterministic"
+      messages:
+        - "chore(sync): integrate upstream changes"
+        - "chore(sync): merge upstream updates"
+        - "chore(sync): pull latest from upstream"
+        - "chore(sync): synchronize with upstream repository"
+        - "feat(sync): incorporate upstream enhancements"
+        - "fix(sync): apply upstream patches"
+        - "refactor(sync): integrate upstream refactoring"
+        - "build(sync): update from upstream build changes"
+        - "ci(sync): synchronize CI/CD configurations"
+        - "docs(sync): pull upstream documentation updates"
+        - "style(sync): apply upstream formatting changes"
+        - "perf(sync): integrate upstream performance improvements"
+        - "test(sync): synchronize test suite from upstream"
+        - "chore(deps): sync upstream dependency updates"
+        - "chore(mirror): automated downstream synchronization"
+      signature: "OutBot ∈ Tinyland ꒰ᐢ⸝⸝•༝•⸝⸝ᐢ꒱"
+
+# Per-directory commits for organized history
+directory_zones:
+  enabled: true
+  source: auto
+  auto_zone_settings:
+    group_root_files: true
+    root_files_zone_name: "root"
+    commit_prefix_template: "chore({zone})"
+    exclude_zones:
+      - ".git"
+      - ".github"
+      - ".gitlab"
+      - "node_modules"
+      - "__pycache__"
+      - ".pytest_cache"
+      - ".mypy_cache"
+      - ".venv"
+      - "venv"
+      - "dist"
+      - "build"
+      - "_build"
+      - "target"
+  skip_unchanged_zones: true
+  generate_ai_message_per_zone: true
+
+# Ignore patterns for sync - AGGRESSIVE PRIVACY MODE
+ignore_patterns:
+  files:
+    # Documentation - ignore all markdown
+    - "*.md"
+    - "README*"
+    - "CHANGELOG*"
+    - "CONTRIBUTING*"
+    - "*.txt"
+    - "*.rst"
+    - "*.adoc"
+    # Temp and logs
+    - "*.log"
+    - "*.tmp"
+    - "*.cache"
+    - "*.bak"
+    - "*.swp"
+    - "*.orig"
+    # Secrets and credentials
+    - ".env*"
+    - "*.secret"
+    - "*.key"
+    - "*.pem"
+    - "*.kdbx"
+    - "*secrets*.yml"
+    - "credentials.json"
+    - "tokens.json"
+    # CI/CD configs (keep GitHub workflows separate)
+    - ".gitlab-ci.yml"
+    # Build artifacts
+    - "*.pyc"
+    - "*.pyo"
+    - "coverage.json"
+    - "*.o"
+    - "*.a"
+    - "*.so"
+    - "*.dylib"
+    # macOS
+    - ".DS_Store"
+    - "._*"
+    # Chapel build artifacts
+    - "*.chplcheck"
+  directories:
+    # Build artifacts
+    - "__pycache__"
+    - "*.egg-info"
+    - "*.dist-info"
+    - ".pytest_cache"
+    - ".mypy_cache"
+    - ".ruff_cache"
+    - ".venv"
+    - "venv"
+    - "dist"
+    - "node_modules"
+    - ".git"
+    - "target"
+    - "_build"
+    # Documentation
+    - "docs"
+    - "documentation"
+    - "site"
+    # IDE/Editor
+    - ".vscode"
+    - ".idea"
+    - ".cursor"
+    # Claude/AI
+    - ".claude"
+    - ".claude-flow"
+    - "memory"
+
+# Auto-strip virtual environments
+auto_strip_venvs: true
+strip_venv_history: true
+auto_approve_venv_strip: true
+
+# Upstream developer privacy protection - MAXIMUM PRIVACY
+protect_upstreamers:
+  enabled: true
+  strip_authors: true
+  author_replacement:
+    name: "OutBot Sync"
+    email: "outbot@tinyland.org"
+  clean_ai_messages: true
+  ai_patterns:
+    - "Generated with \\[Claude Code\\].*"
+    - "Co-Authored-By: Claude.*"
+    - "Generated by GitHub Copilot"
+    - "Co-Authored-By:.*Copilot.*"
+  preserve_authors:
+    - "outbot@automated.local"
+    - "dependabot[bot]@users.noreply.github.com"
+  squash_mode: none
+
+# Code comment stripping - Chapel, Go, Python support
+protect_comments:
+  enabled: true
+  include_patterns:
+    - "*.py"
+    - "*.chpl"     # Chapel
+    - "*.go"       # Go
+    - "*.c"        # C
+    - "*.h"        # C headers
+    - "*.js"
+    - "*.ts"
+    - "*.sh"
+    - "*.yaml"
+    - "*.yml"
+    - "*.toml"
+  preserve_patterns:
+    - 'Copyright\s+\d{4}'
+    - 'SPDX-License-Identifier:'
+    - 'Generated by'
+    - 'DO NOT EDIT'
+    - '@license'
+    - '@preserve'
+    - 'MIT License'
+    - 'ZLIB License'
+  preserve_docstrings: false  # Strip docstrings (privacy)
+  preserve_shebangs: true
+  preserve_encoding: true
+  on_error: "warn"
+
+# Custom OutBot identity
+outbot_as:
+  name: "OutBot Sync"
+  email: "outbot@tinyland.dev"
+  sign_off: true
+  gpg:
+    key_id: "B7D382A890EA8DA4"
+    key_var: "OUTBOT_GPG_KEY"
+    passphrase_var: "OUTBOT_GPG_PASS"
+
+# ============================================
+# Safety Checks (Composable Validators)
+# ============================================
+safety_checks:
+  enabled: true
+  fail_on_error: true
+  fail_on_critical: true
+
+  empty_file_detection:
+    enabled: true
+    blocking: true
+    critical_files:
+      - "Mason.toml"
+      - "Makefile"
+      - "LICENSE"
+
+  drastic_loc_change:
+    enabled: true
+    blocking: false  # Warn only
+    thresholds:
+      overall_warning: 30
+      overall_error: 50
+      overall_critical: 80
+    exclude_patterns:
+      - "*.md"
+      - "*.lock"
+      - "Mason.lock"
+
+  critical_file_deletion:
+    enabled: true
+    blocking: true
+    critical_files:
+      - "LICENSE*"
+      - "Mason.toml"
+      - "Makefile"
+
+  binary_file_corruption:
+    enabled: true
+    blocking: true
+
+  symlink_safety:
+    enabled: true
+    blocking: true
+    allow_relative: true
+    allow_absolute: false
+
+# ============================================
+# Facets Configuration (Bidirectional Sync)
+# ============================================
+facets:
+  enabled: true
+  validate_before_sync: true
+
+  license:
+    enabled: true
+    fail_on_incompatible: false
+
+  language:
+    enabled: true
+    suggest_zones: true
+
+  # GitHub target - enable when needed
+  registry:
+    enabled: false
+    mirror_images: false
+
+  releases:
+    enabled: true  # Sync releases to GitHub
+    mirror_releases: true
+    include_assets: true
+
+  pages:
+    enabled: false

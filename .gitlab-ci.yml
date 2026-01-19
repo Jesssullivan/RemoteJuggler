@@ -8,6 +8,7 @@ stages:
   - package
   - sign
   - release
+  - sync
 
 variables:
   CHAPEL_VERSION: "2.7.0"
@@ -1109,3 +1110,52 @@ pages:
       - public
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# =============================================================================
+# OutBot Sync Stage (GitLab → GitHub Mirror)
+# =============================================================================
+
+# Scheduled sync - runs every 15 minutes
+outbot:sync:scheduled:
+  stage: sync
+  image:
+    name: registry.gitlab.com/tinyland/ai/outbot-ci:latest
+    pull_policy: always
+  variables:
+    GIT_DEPTH: 0
+    GIT_STRATEGY: clone
+  script:
+    - outbot sync --config .outbot.yml
+  timeout: 5 minutes
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - job_execution_timeout
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: always
+
+# Push-triggered sync - manual for main branch
+outbot:sync:
+  stage: sync
+  image:
+    name: registry.gitlab.com/tinyland/ai/outbot-ci:latest
+    pull_policy: always
+  variables:
+    GIT_DEPTH: 0
+    GIT_STRATEGY: clone
+  script:
+    - outbot sync --config .outbot.yml
+  timeout: 5 minutes
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - job_execution_timeout
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
