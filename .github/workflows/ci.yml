@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  CHAPEL_VERSION: "2.8.0"
+  CHAPEL_VERSION: "2.7.0"
   CARGO_TERM_COLOR: always
 
 jobs:

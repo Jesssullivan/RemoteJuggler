@@ -11,24 +11,17 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// GPG signing configuration for an identity
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GpgConfig {
+    #[serde(default)]
     pub key_id: String,
+    #[serde(default)]
     pub sign_commits: bool,
+    #[serde(default)]
     pub sign_tags: bool,
+    #[serde(default)]
     pub auto_signoff: bool,
-}
-
-impl Default for GpgConfig {
-    fn default() -> Self {
-        Self {
-            key_id: String::new(),
-            sign_commits: false,
-            sign_tags: false,
-            auto_signoff: false,
-        }
-    }
 }
 
 /// A single git identity configuration
@@ -50,6 +43,7 @@ pub struct Identity {
 
 impl Identity {
     /// Returns a display name for this identity
+    #[allow(dead_code)]
     pub fn display_name(&self) -> String {
         if self.user.is_empty() {
             self.host.clone()
@@ -59,6 +53,7 @@ impl Identity {
     }
 
     /// Returns whether this identity has GPG signing enabled
+    #[allow(dead_code)]
     pub fn has_gpg_signing(&self) -> bool {
         !self.gpg.key_id.is_empty() && self.gpg.sign_commits
     }
@@ -79,6 +74,7 @@ pub enum SshKeyType {
 }
 
 impl SshKeyType {
+    #[allow(dead_code)]
     pub fn display_name(&self) -> &'static str {
         match self {
             SshKeyType::Regular => "SSH Key",
@@ -106,6 +102,7 @@ pub struct SshVariant {
 }
 
 impl SshVariant {
+    #[allow(dead_code)]
     pub fn display_name(&self) -> String {
         self.key_type.display_name().to_string()
     }
@@ -132,6 +129,7 @@ pub struct Profile {
 
 impl Profile {
     /// Returns a display name for this profile
+    #[allow(dead_code)]
     pub fn display_name(&self) -> String {
         if self.user.is_empty() {
             self.name.clone()
@@ -146,24 +144,29 @@ impl Profile {
     }
 
     /// Get the default (preferred) variant - prefers FIDO2 if available
+    #[allow(dead_code)]
     pub fn default_variant(&self) -> Option<&SshVariant> {
         // Prefer FIDO2/security key if available
-        self.variants.iter()
+        self.variants
+            .iter()
             .find(|v| v.key_type == SshKeyType::Fido2)
             .or_else(|| self.variants.first())
     }
 
     /// Get variant by key type
+    #[allow(dead_code)]
     pub fn get_variant(&self, key_type: &SshKeyType) -> Option<&SshVariant> {
         self.variants.iter().find(|v| &v.key_type == key_type)
     }
 
     /// Get the regular SSH key variant
+    #[allow(dead_code)]
     pub fn regular_variant(&self) -> Option<&SshVariant> {
         self.get_variant(&SshKeyType::Regular)
     }
 
     /// Get the FIDO2/security key variant
+    #[allow(dead_code)]
     pub fn fido2_variant(&self) -> Option<&SshVariant> {
         self.get_variant(&SshKeyType::Fido2)
     }
@@ -239,27 +242,26 @@ impl Config {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
-        let config: Config = serde_json::from_str(&content)
-            .with_context(|| {
-                // Try to get more detailed error
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(_) => "JSON valid but struct mismatch".to_string(),
-                    Err(e) => format!("JSON parse error: {}", e),
-                }
-            })?;
+        let config: Config = serde_json::from_str(&content).with_context(|| {
+            // Try to get more detailed error
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(_) => "JSON valid but struct mismatch".to_string(),
+                Err(e) => format!("JSON parse error: {}", e),
+            }
+        })?;
 
         Ok(config)
     }
 
     /// Get the default config file path
     pub fn config_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .context("Could not determine config directory")?;
+        let config_dir = dirs::config_dir().context("Could not determine config directory")?;
 
         Ok(config_dir.join("remote-juggler").join("config.json"))
     }
 
     /// Get a sorted list of identity names
+    #[allow(dead_code)]
     pub fn identity_names(&self) -> Vec<String> {
         let mut names: Vec<_> = self.identities.keys().cloned().collect();
         names.sort();
@@ -272,6 +274,7 @@ impl Config {
     }
 
     /// Get the current identity if set
+    #[allow(dead_code)]
     pub fn current_identity(&self) -> Option<&Identity> {
         if self.state.current_identity.is_empty() {
             None
@@ -290,7 +293,10 @@ impl Config {
 
         for (name, identity) in &self.identities {
             let key = (identity.provider.clone(), identity.user.clone());
-            profile_map.entry(key).or_default().push((name.clone(), identity.clone()));
+            profile_map
+                .entry(key)
+                .or_default()
+                .push((name.clone(), identity.clone()));
         }
 
         // Convert to Profile structs
@@ -298,10 +304,9 @@ impl Config {
             .into_iter()
             .map(|((provider, user), identities)| {
                 // Determine the base profile name (without -sk suffix)
-                let base_name = identities.iter()
-                    .map(|(name, _)| {
-                        name.strip_suffix("-sk").unwrap_or(name).to_string()
-                    })
+                let base_name = identities
+                    .iter()
+                    .map(|(name, _)| name.strip_suffix("-sk").unwrap_or(name).to_string())
                     .min_by_key(|n| n.len())
                     .unwrap_or_else(|| format!("{}-{}", provider, user));
 
@@ -343,24 +348,26 @@ impl Config {
 
         // Sort variants within each profile (Regular before Fido2)
         for profile in &mut profiles {
-            profile.variants.sort_by(|a, b| {
-                match (&a.key_type, &b.key_type) {
+            profile
+                .variants
+                .sort_by(|a, b| match (&a.key_type, &b.key_type) {
                     (SshKeyType::Regular, SshKeyType::Fido2) => std::cmp::Ordering::Less,
                     (SshKeyType::Fido2, SshKeyType::Regular) => std::cmp::Ordering::Greater,
                     _ => a.identity_name.cmp(&b.identity_name),
-                }
-            });
+                });
         }
 
         profiles
     }
 
     /// Get a sorted list of profile names
+    #[allow(dead_code)]
     pub fn profile_names(&self) -> Vec<String> {
         self.profiles().into_iter().map(|p| p.name).collect()
     }
 
     /// Get a profile by name
+    #[allow(dead_code)]
     pub fn get_profile(&self, name: &str) -> Option<Profile> {
         self.profiles().into_iter().find(|p| p.name == name)
     }
@@ -447,6 +454,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires real config file - run manually with --ignored
     fn test_load_real_config() {
         let result = Config::load();
         match &result {
@@ -457,26 +465,42 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires real config file - run manually with --ignored
     fn test_profiles_grouping() {
         let result = Config::load();
         if let Ok(config) = result {
             let profiles = config.profiles();
 
             // Should have fewer profiles than identities due to grouping
-            println!("Identities: {}, Profiles: {}", config.identities.len(), profiles.len());
+            println!(
+                "Identities: {}, Profiles: {}",
+                config.identities.len(),
+                profiles.len()
+            );
 
             for profile in &profiles {
-                println!("Profile: {} ({}) - {} variants",
-                    profile.name, profile.provider, profile.variants.len());
+                println!(
+                    "Profile: {} ({}) - {} variants",
+                    profile.name,
+                    profile.provider,
+                    profile.variants.len()
+                );
                 for variant in &profile.variants {
-                    println!("  - {} ({})", variant.identity_name, variant.key_type.short_name());
+                    println!(
+                        "  - {} ({})",
+                        variant.identity_name,
+                        variant.key_type.short_name()
+                    );
                 }
             }
 
             // Each profile should have at least one variant
             for profile in &profiles {
-                assert!(!profile.variants.is_empty(),
-                    "Profile {} has no variants", profile.name);
+                assert!(
+                    !profile.variants.is_empty(),
+                    "Profile {} has no variants",
+                    profile.name
+                );
             }
         }
     }
@@ -497,15 +521,24 @@ mod tests {
 
             for profile in &profiles {
                 // Test default_variant returns something
-                assert!(profile.default_variant().is_some(),
-                    "Profile {} should have a default variant", profile.name);
+                assert!(
+                    profile.default_variant().is_some(),
+                    "Profile {} should have a default variant",
+                    profile.name
+                );
 
                 // If has multiple variants, should have both types
                 if profile.has_multiple_variants() {
-                    assert!(profile.regular_variant().is_some(),
-                        "Profile {} with multiple variants should have regular", profile.name);
-                    assert!(profile.fido2_variant().is_some(),
-                        "Profile {} with multiple variants should have fido2", profile.name);
+                    assert!(
+                        profile.regular_variant().is_some(),
+                        "Profile {} with multiple variants should have regular",
+                        profile.name
+                    );
+                    assert!(
+                        profile.fido2_variant().is_some(),
+                        "Profile {} with multiple variants should have fido2",
+                        profile.name
+                    );
                 }
             }
         }

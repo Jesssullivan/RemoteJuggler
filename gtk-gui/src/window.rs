@@ -110,16 +110,17 @@ mod imp {
                 let profile_row = adw::ComboRow::new();
                 profile_row.set_title("Active Profile");
 
-                let profile_names: Vec<String> = profiles.iter()
-                    .map(|p| p.display_name())
-                    .collect();
-                let profile_names_strs: Vec<&str> = profile_names.iter().map(|s| s.as_str()).collect();
+                let profile_names: Vec<String> =
+                    profiles.iter().map(|p| p.display_name()).collect();
+                let profile_names_strs: Vec<&str> =
+                    profile_names.iter().map(|s| s.as_str()).collect();
                 let profile_list = gtk4::StringList::new(&profile_names_strs);
                 profile_row.set_model(Some(&profile_list));
 
                 // Set current selection based on current identity's profile
                 if let Some(current_profile) = config.current_profile() {
-                    if let Some(pos) = profiles.iter().position(|p| p.name == current_profile.name) {
+                    if let Some(pos) = profiles.iter().position(|p| p.name == current_profile.name)
+                    {
                         profile_row.set_selected(pos as u32);
                     }
                 }
@@ -134,9 +135,12 @@ mod imp {
                     if profile.has_multiple_variants() {
                         let variant_row = adw::ComboRow::new();
                         variant_row.set_title("SSH Key Type");
-                        variant_row.set_subtitle("Choose between regular SSH or hardware security key");
+                        variant_row
+                            .set_subtitle("Choose between regular SSH or hardware security key");
 
-                        let variant_names: Vec<&str> = profile.variants.iter()
+                        let variant_names: Vec<&str> = profile
+                            .variants
+                            .iter()
                             .map(|v| v.key_type.display_name())
                             .collect();
                         let variant_list = gtk4::StringList::new(&variant_names);
@@ -144,7 +148,9 @@ mod imp {
 
                         // Set current variant selection
                         if let Some(ref current_var) = current_variant {
-                            if let Some(pos) = profile.variants.iter()
+                            if let Some(pos) = profile
+                                .variants
+                                .iter()
                                 .position(|v| v.identity_name == current_var.identity_name)
                             {
                                 variant_row.set_selected(pos as u32);
@@ -187,12 +193,16 @@ mod imp {
                         let ssh_info = if variant.identity.ssh_key_path.is_empty() {
                             format!("{} (default)", variant.key_type.display_name())
                         } else {
-                            format!("{} ({})",
+                            format!(
+                                "{} ({})",
                                 variant.key_type.display_name(),
-                                variant.identity.ssh_key_path
+                                variant
+                                    .identity
+                                    .ssh_key_path
                                     .rsplit('/')
                                     .next()
-                                    .unwrap_or(&variant.identity.ssh_key_path))
+                                    .unwrap_or(&variant.identity.ssh_key_path)
+                            )
                         };
                         ssh_row.set_subtitle(&ssh_info);
 
@@ -220,7 +230,9 @@ mod imp {
                     // Available variants summary
                     let variants_row = adw::ActionRow::new();
                     variants_row.set_title("Available Key Types");
-                    let variant_summary: Vec<&str> = profile.variants.iter()
+                    let variant_summary: Vec<&str> = profile
+                        .variants
+                        .iter()
                         .map(|v| v.key_type.short_name())
                         .collect();
                     variants_row.set_subtitle(&variant_summary.join(", "));
@@ -252,7 +264,7 @@ mod imp {
                 status_page.set_title("Configuration Not Found");
                 status_page.set_description(Some(
                     "Could not load RemoteJuggler configuration.\n\
-                     Please ensure ~/.config/remote-juggler/config.json exists."
+                     Please ensure ~/.config/remote-juggler/config.json exists.",
                 ));
                 main_box.append(&status_page);
             }

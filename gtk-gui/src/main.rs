@@ -4,8 +4,8 @@ mod window;
 #[cfg(test)]
 mod config_properties;
 
-use gtk4::prelude::*;
 use gtk4::glib;
+use gtk4::prelude::*;
 use libadwaita as adw;
 
 const APP_ID: &str = "dev.tinyland.RemoteJuggler";
@@ -15,9 +15,7 @@ fn main() -> glib::ExitCode {
     tracing_subscriber::fmt::init();
 
     // Create the application
-    let app = adw::Application::builder()
-        .application_id(APP_ID)
-        .build();
+    let app = adw::Application::builder().application_id(APP_ID).build();
 
     app.connect_activate(build_ui);
 

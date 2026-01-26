@@ -29,8 +29,16 @@ fn email_address() -> impl Strategy<Value = String> {
         prop::sample::select(vec!["com", "org", "net", "dev", "io"]),
     )
         .prop_map(|(local, domain, tld)| {
-            let local = if local.is_empty() { "user".to_string() } else { local };
-            let domain = if domain.is_empty() { "example".to_string() } else { domain };
+            let local = if local.is_empty() {
+                "user".to_string()
+            } else {
+                local
+            };
+            let domain = if domain.is_empty() {
+                "example".to_string()
+            } else {
+                domain
+            };
             format!("{}@{}.{}", local, domain, tld)
         })
 }
@@ -49,11 +57,9 @@ fn provider_string() -> impl Strategy<Value = String> {
 fn gpg_key_id() -> impl Strategy<Value = String> {
     prop::bool::ANY.prop_flat_map(|use_long| {
         if use_long {
-            prop::string::string_regex("[0-9A-F]{40}")
-                .expect("valid regex")
+            prop::string::string_regex("[0-9A-F]{40}").expect("valid regex")
         } else {
-            prop::string::string_regex("[0-9A-F]{16}")
-                .expect("valid regex")
+            prop::string::string_regex("[0-9A-F]{16}").expect("valid regex")
         }
     })
 }
@@ -66,12 +72,14 @@ fn arb_gpg_config() -> impl Strategy<Value = GpgConfig> {
         prop::bool::ANY,
         prop::bool::ANY,
     )
-        .prop_map(|(key_id, sign_commits, sign_tags, auto_signoff)| GpgConfig {
-            key_id: key_id.unwrap_or_default(),
-            sign_commits,
-            sign_tags,
-            auto_signoff,
-        })
+        .prop_map(
+            |(key_id, sign_commits, sign_tags, auto_signoff)| GpgConfig {
+                key_id: key_id.unwrap_or_default(),
+                sign_commits,
+                sign_tags,
+                auto_signoff,
+            },
+        )
 }
 
 /// Generates arbitrary Identity structs
@@ -84,12 +92,29 @@ fn arb_identity() -> impl Strategy<Value = Identity> {
         email_address(),
         prop::string::string_regex("~/.ssh/id_[a-z_]+").expect("valid regex"),
         prop::sample::select(vec!["keychain", "env", "none"]),
-        prop::collection::vec(prop::string::string_regex("[a-z][a-z0-9-]{0,15}").expect("valid regex"), 0..3),
+        prop::collection::vec(
+            prop::string::string_regex("[a-z][a-z0-9-]{0,15}").expect("valid regex"),
+            0..3,
+        ),
         arb_gpg_config(),
     )
         .prop_map(
-            |(provider, host, hostname, user, email, ssh_key_path, credential_source, organizations, gpg)| {
-                let user = if user.is_empty() { "user".to_string() } else { user };
+            |(
+                provider,
+                host,
+                hostname,
+                user,
+                email,
+                ssh_key_path,
+                credential_source,
+                organizations,
+                gpg,
+            )| {
+                let user = if user.is_empty() {
+                    "user".to_string()
+                } else {
+                    user
+                };
                 let ssh_key_path = if ssh_key_path.is_empty() {
                     "~/.ssh/id_ed25519".to_string()
                 } else {
@@ -122,7 +147,15 @@ fn arb_settings() -> impl Strategy<Value = Settings> {
         prop::bool::ANY,
     )
         .prop_map(
-            |(default_provider, auto_detect, use_keychain, gpg_sign, gpg_verify_with_provider, fallback_to_ssh, verbose_logging)| {
+            |(
+                default_provider,
+                auto_detect,
+                use_keychain,
+                gpg_sign,
+                gpg_verify_with_provider,
+                fallback_to_ssh,
+                verbose_logging,
+            )| {
                 Settings {
                     default_provider,
                     auto_detect,
@@ -143,33 +176,27 @@ fn arb_state(identity_names: Vec<String>) -> impl Strategy<Value = State> {
         prop::string::string_regex("2024-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
             .expect("valid regex"),
     )
-        .prop_map(|(current_identity, last_switch)| {
-            State {
-                current_identity: current_identity.unwrap_or_default(),
-                last_switch,
-            }
+        .prop_map(|(current_identity, last_switch)| State {
+            current_identity: current_identity.unwrap_or_default(),
+            last_switch,
         })
 }
 
 /// Generates identity pairs (base + security key variant)
 fn arb_identity_pair() -> impl Strategy<Value = (String, Identity, Identity)> {
-    (
-        ssh_host_alias(),
-        arb_identity(),
-    )
-        .prop_map(|(base_name, mut base_identity)| {
-            // Ensure base identity doesn't have -sk suffix
-            let base_name = base_name.trim_end_matches("-sk").to_string();
-            base_identity.host = base_name.clone();
-            base_identity.ssh_key_path = format!("~/.ssh/{}", base_name);
+    (ssh_host_alias(), arb_identity()).prop_map(|(base_name, mut base_identity)| {
+        // Ensure base identity doesn't have -sk suffix
+        let base_name = base_name.trim_end_matches("-sk").to_string();
+        base_identity.host = base_name.clone();
+        base_identity.ssh_key_path = format!("~/.ssh/{}", base_name);
 
-            // Create the security key variant
-            let mut sk_identity = base_identity.clone();
-            sk_identity.host = format!("{}-sk", base_name);
-            sk_identity.ssh_key_path = format!("~/.ssh/{}-sk", base_name);
+        // Create the security key variant
+        let mut sk_identity = base_identity.clone();
+        sk_identity.host = format!("{}-sk", base_name);
+        sk_identity.ssh_key_path = format!("~/.ssh/{}-sk", base_name);
 
-            (base_name, base_identity, sk_identity)
-        })
+        (base_name, base_identity, sk_identity)
+    })
 }
 
 /// Generates arbitrary Config structs
@@ -192,16 +219,14 @@ fn arb_config() -> impl Strategy<Value = Config> {
             }),
         )
     })
-    .prop_map(|(identities, settings, state)| {
-        Config {
-            schema: Some("https://remote-juggler.dev/schema/config.json".to_string()),
-            version: "1.0".to_string(),
-            generated: "2024-01-01T00:00:00Z".to_string(),
-            identities,
-            settings,
-            state,
-            extra: HashMap::new(),
-        }
+    .prop_map(|(identities, settings, state)| Config {
+        schema: Some("https://remote-juggler.dev/schema/config.json".to_string()),
+        version: "1.0".to_string(),
+        generated: "2024-01-01T00:00:00Z".to_string(),
+        identities,
+        settings,
+        state,
+        extra: HashMap::new(),
     })
 }
 
@@ -384,7 +409,9 @@ mod unit_tests {
             );
             // GPG key IDs are uppercase hex digits (0-9, A-F)
             assert!(
-                value.chars().all(|c: char| c.is_ascii_digit() || ('A'..='F').contains(&c)),
+                value
+                    .chars()
+                    .all(|c: char| c.is_ascii_digit() || ('A'..='F').contains(&c)),
                 "GPG key ID should be uppercase hex, got: {}",
                 value
             );
