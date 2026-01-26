@@ -32,17 +32,12 @@ jobs:
 
       - name: Install Chapel
         run: |
-          # Download and install Chapel
-          wget -q https://github.com/chapel-lang/chapel/releases/download/${CHAPEL_VERSION}/chapel-${CHAPEL_VERSION}-linux64-x86_64.tar.gz
-          tar xzf chapel-${CHAPEL_VERSION}-linux64-x86_64.tar.gz
-          echo "$PWD/chapel-${CHAPEL_VERSION}/bin/linux64-x86_64" >> $GITHUB_PATH
-          export PATH="$PWD/chapel-${CHAPEL_VERSION}/bin/linux64-x86_64:$PATH"
-          # Verify installation
+          wget -q https://github.com/chapel-lang/chapel/releases/download/${CHAPEL_VERSION}/chapel-${CHAPEL_VERSION}-1.ubuntu24.amd64.deb
+          sudo apt-get install -y ./chapel-${CHAPEL_VERSION}-1.ubuntu24.amd64.deb
           chpl --version
 
       - name: Build
         run: |
-          export PATH="$PWD/chapel-${CHAPEL_VERSION}/bin/linux64-x86_64:$PATH"
           mason build --release
           mv target/release/remote_juggler ${{ env.PROJECT_NAME }}-linux-amd64
           chmod +x ${{ env.PROJECT_NAME }}-linux-amd64
@@ -62,15 +57,8 @@ jobs:
 
       - name: Install Chapel
         run: |
-          # Build Chapel from source for ARM64
-          sudo apt-get update
-          sudo apt-get install -y build-essential python3 perl wget
-          wget -q https://github.com/chapel-lang/chapel/releases/download/${CHAPEL_VERSION}/chapel-${CHAPEL_VERSION}.tar.gz
-          tar xzf chapel-${CHAPEL_VERSION}.tar.gz
-          cd chapel-${CHAPEL_VERSION}
-          ./configure
-          make -j$(nproc)
-          echo "$PWD/bin/linux64-aarch64" >> $GITHUB_PATH
+          wget -q https://github.com/chapel-lang/chapel/releases/download/${CHAPEL_VERSION}/chapel-${CHAPEL_VERSION}-1.ubuntu24.arm64.deb
+          sudo apt-get install -y ./chapel-${CHAPEL_VERSION}-1.ubuntu24.arm64.deb
 
       - name: Build
         run: |
