@@ -192,6 +192,13 @@ prototype module remote_juggler {
     writeln("    config sync       Synchronize managed blocks");
     writeln();
 
+    writeln("  ", bold("Setup & Integration:"));
+    writeln("    setup             Interactive first-time setup wizard");
+    writeln("    setup --auto      Auto-detect SSH hosts and GPG keys");
+    writeln("    setup --shell     Install shell integrations (envrc, starship, nix)");
+    writeln("    setup --status    Show current setup status");
+    writeln();
+
     writeln("  ", bold("Token Management:"));
     writeln("    token set <n>     Store token in keychain (Darwin)");
     writeln("    token get <n>     Retrieve token (masked output)");
@@ -1535,6 +1542,7 @@ prototype module remote_juggler {
       when "yubikey", "yk" do handleYubiKey(subArgs);
       when "trusted-workstation", "tws" do handleTrustedWorkstationCmd(subArgs);
       when "keys", "kdbx" do handleKeys(subArgs);
+      when "setup" do handleSetup(subArgs);
       when "unseal-pin" do handleUnsealPin(subArgs);
       when "help", "--help", "-h" do printUsage();
       when "version", "--version", "-v" {
@@ -2581,6 +2589,33 @@ prototype module remote_juggler {
       writeln("  - Check YubiKey is connected");
       writeln("  - Verify PIN is stored: remote-juggler pin status ", name);
       writeln("  - Check gpg-agent: remote-juggler trusted-workstation status");
+    }
+  }
+
+  // ==========================================================================
+  // Setup Command Handler
+  // ==========================================================================
+
+  // Handle 'setup' command
+  proc handleSetup(args: list(string)) {
+    var mode = Setup.SetupMode.Interactive;
+
+    // Parse setup mode from arguments
+    if args.size > 0 {
+      mode = Setup.parseSetupMode(args[0]);
+    }
+
+    const result = Setup.runSetup(mode);
+
+    if !result.success {
+      printError(result.message);
+      if result.warnings.size > 0 {
+        writeln();
+        writeln("Warnings:");
+        for warning in result.warnings {
+          printWarning(warning);
+        }
+      }
     }
   }
 

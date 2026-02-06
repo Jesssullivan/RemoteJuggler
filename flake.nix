@@ -429,6 +429,17 @@
             ''}
             echo ""
             echo "Attic cache: https://nix-cache.fuzzy-dev.tinyland.dev/tinyland"
+            echo ""
+
+            # RemoteJuggler identity auto-switching
+            if command -v remote-juggler >/dev/null 2>&1; then
+              if [ -d .git ] || git rev-parse --git-dir >/dev/null 2>&1; then
+                DETECTED=$(remote-juggler detect --quiet 2>/dev/null)
+                if [ -n "$DETECTED" ]; then
+                  echo "RemoteJuggler: Detected identity '$DETECTED'"
+                fi
+              fi
+            fi
           '';
 
           # Ensure pkg-config can find GTK
