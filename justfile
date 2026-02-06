@@ -33,6 +33,10 @@ hsm_lib_darwin := hsm_dir / "libhsm_remotejuggler.dylib"
 default:
     @just --list
 
+# Build and test everything (equivalent of old `make all`)
+[group('dev')]
+all: lint build test
+
 # =============================================================================
 # Development
 # =============================================================================
@@ -180,6 +184,13 @@ lint:
 # Run lint and tests
 [group('test')]
 check: lint test
+
+# Chapel compilation smoke test (no codegen, catches type errors fast)
+[group('test')]
+check-compile:
+    @echo "Checking Chapel compilation (no codegen)..."
+    chpl --no-codegen -sHSM_NATIVE_AVAILABLE=false {{chpl_flags}} src/remote_juggler.chpl
+    @echo "Chapel compilation check passed."
 
 # Run integration tests
 [group('test')]

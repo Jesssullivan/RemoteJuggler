@@ -1254,6 +1254,46 @@ prototype module GlobalConfig {
   }
 
   /*
+    Extract a boolean value from a JSON string.
+
+    Handles unquoted JSON booleans: "key": true / "key": false
+
+    :arg json: JSON string
+    :arg key: Key to search for
+    :arg defaultVal: Default if key not found
+    :returns: Extracted boolean value
+  */
+  proc extractJSONBool(json: string, key: string, defaultVal: bool): bool {
+    const pattern = '"' + key + '":';
+    const start = json.find(pattern);
+    if start < 0 then return defaultVal;
+
+    // Skip past the pattern and any whitespace
+    var pos = start + pattern.size;
+    while pos < json.size && (json[pos] == ' ' || json[pos] == '\t') {
+      pos += 1;
+    }
+    if pos >= json.size then return defaultVal;
+
+    // Check for true/false
+    if pos + 4 <= json.size && json[pos..#4] == "true" {
+      return true;
+    }
+    if pos + 5 <= json.size && json[pos..#5] == "false" {
+      return false;
+    }
+
+    // Also handle quoted booleans: "true" / "false"
+    if json[pos] == '"' {
+      pos += 1;
+      if pos + 4 <= json.size && json[pos..#4] == "true" then return true;
+      if pos + 5 <= json.size && json[pos..#5] == "false" then return false;
+    }
+
+    return defaultVal;
+  }
+
+  /*
     Extract a JSON object section.
 
     :arg json: JSON string
@@ -1419,15 +1459,24 @@ prototype module GlobalConfig {
   */
   proc parseSettingsJSON(json: string): AppSettings {
     var settings = new AppSettings();
-    // Extract boolean/string fields
-    const autoDetect = extractJSONString(json, "autoDetect", "true");
-    settings.autoDetect = autoDetect == "true";
 
-    const useKeychain = extractJSONString(json, "useKeychain", "true");
-    settings.useKeychain = useKeychain == "true";
+    // Boolean fields
+    settings.autoDetect = extractJSONBool(json, "autoDetect", true);
+    settings.useKeychain = extractJSONBool(json, "useKeychain", true);
+    settings.gpgSign = extractJSONBool(json, "gpgSign", true);
+    settings.gpgVerifyWithProvider = extractJSONBool(json, "gpgVerifyWithProvider", true);
+    settings.fallbackToSSH = extractJSONBool(json, "fallbackToSSH", true);
+    settings.verboseLogging = extractJSONBool(json, "verboseLogging", false);
+    settings.hsmAvailable = extractJSONBool(json, "hsmAvailable", false);
+    settings.trustedWorkstationRequiresHSM = extractJSONBool(json, "trustedWorkstationRequiresHSM", true);
+    settings.useKeePassXC = extractJSONBool(json, "useKeePassXC", false);
+    settings.keepassxcAutoUnlock = extractJSONBool(json, "keepassxcAutoUnlock", true);
 
-    const gpgSign = extractJSONString(json, "gpgSign", "true");
-    settings.gpgSign = gpgSign == "true";
+    // String fields
+    const defaultProvider = extractJSONString(json, "defaultProvider", "gitlab");
+    settings.defaultProvider = stringToProvider(defaultProvider);
+    settings.defaultSecurityMode = extractJSONString(json, "defaultSecurityMode", "developer_workflow");
+    settings.keepassxcDatabase = extractJSONString(json, "keepassxcDatabase", "~/.remotejuggler/keys.kdbx");
 
     return settings;
   }

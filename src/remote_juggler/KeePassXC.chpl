@@ -199,30 +199,13 @@ prototype module KeePassXC {
     }
 
     // Retrieve sealed master password from HSM
-    var pinBuf: [0..#256] uint(8);
-    var pinLen: c_size_t = 0;
-    const result = hsm_retrieve_pin(KDBX_HSM_IDENTITY, c_ptrTo(pinBuf), pinLen);
-
+    const (result, password) = hsm_retrieve_pin(KDBX_HSM_IDENTITY);
     if result != HSM_SUCCESS {
       verboseLog("KeePassXC: Failed to retrieve master password from HSM: ",
                  hsm_error_message(result));
       return (false, "");
     }
-
-    // Convert to string
-    try {
-      var password: string;
-      for i in 0..<pinLen:int {
-        password += chr(pinBuf[i]:int);
-      }
-      // Zero out the buffer
-      for i in 0..<256 {
-        pinBuf[i] = 0;
-      }
-      return (true, password);
-    } catch {
-      return (false, "");
-    }
+    return (true, password);
   }
 
   /*

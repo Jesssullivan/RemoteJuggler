@@ -386,6 +386,7 @@ prototype module remote_juggler {
     write("  Auth:     ");
     select identity.credentialSource {
       when Core.CredentialSource.Keychain do writeln(green("Keychain"));
+      when Core.CredentialSource.KeePassXC do writeln(cyan("KeePassXC (" + identity.keePassEntry + ")"));
       when Core.CredentialSource.Environment do writeln(cyan("Environment ($" + identity.tokenEnvVar + ")"));
       when Core.CredentialSource.CLIAuth do writeln(cyan("CLI Auth (glab/gh)"));
       when Core.CredentialSource.None do writeln(yellow("SSH-only"));
